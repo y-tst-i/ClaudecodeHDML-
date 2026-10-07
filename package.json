@@ -10,7 +10,9 @@
     "cuts": "node scripts/render.mjs --stills",
     "probe": "node scripts/probe.mjs",
     "deck": "vite --config concrete/vite.config.js --port 5174",
-    "deck:build": "vite build --config concrete/vite.config.js"
+    "deck:build": "vite build --config concrete/vite.config.js",
+    "deck3": "vite --config concrete/v3/vite.config.js --port 5176",
+    "deck3:build": "vite build --config concrete/v3/vite.config.js"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

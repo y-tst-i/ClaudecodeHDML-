@@ -1,0 +1,170 @@
+/* v3：写真 × 動く文字組み。CGは使わない。
+   動きはすべて CSS の transition / animation（録画モードで同じ時計に合わせられる） */
+:root {
+  --paper: #ece9e3; --ink: #111; --accent: #ff5a1f; --line: rgba(236,233,227,.26);
+  --jp: "Noto Sans JP Variable", "Hiragino Sans", sans-serif;
+  --en: "Inter Variable", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --ease: cubic-bezier(.7, 0, .15, 1);   /* 溜めてから一気に */
+  --out: cubic-bezier(.16, 1, .3, 1);    /* 速く出て、ゆっくり止まる */
+  --snap: cubic-bezier(.2, 1.6, .4, 1);  /* 行き過ぎて戻る */
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+.stage { position: fixed; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: 50% 50%; overflow: hidden; font-family: var(--jp); color: var(--paper); letter-spacing: 0; font-feature-settings: "palt"; background: #0b0b0b; }
+.stage[data-tone="light"] { color: var(--ink); --line: rgba(17,17,17,.25); background: var(--paper); }
+.layer { position: absolute; inset: 0; }
+.layer > * { position: absolute; margin: 0; }
+
+/* ---------- 写真 ---------- */
+/* 全枚数を同じ色調に揃える：少し低彩度・黒を締める。上に粒子とビネット */
+.ph { inset: 0; overflow: hidden; }
+.ph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(.82) contrast(1.06) brightness(.92); transform-origin: var(--ox, 50%) var(--oy, 50%); }
+.ph::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,var(--shade, .55)) 0%, rgba(0,0,0,0) 62%), radial-gradient(ellipse at 60% 50%, transparent 55%, rgba(0,0,0,.45)); pointer-events: none; }
+.ph.flat::after { background: radial-gradient(ellipse at 50% 50%, transparent 60%, rgba(0,0,0,.35)); }
+/* ゆっくり寄る／引く／流れる（ケン・バーンズ）。長い時間をかけて止まらない */
+.ph img { transition: transform 14s linear, opacity .9s var(--out), clip-path 1.1s var(--ease), filter 1.2s var(--out); }
+.ph.in img { transform: scale(var(--s0, 1.08)) translate(var(--x0, 0), var(--y0, 0)); }
+.ph.in.on img { transform: scale(var(--s1, 1.16)) translate(var(--x1, 0), var(--y1, 0)); }
+/* 出方 */
+.ph.wipe.in img { clip-path: inset(100% 0 0 0); }
+.ph.wipe.in.on img { clip-path: inset(0 0 0 0); }
+.ph.iris.in img { clip-path: circle(0% at var(--ox, 50%) var(--oy, 50%)); }
+.ph.iris.in.on img { clip-path: circle(120% at var(--ox, 50%) var(--oy, 50%)); }
+.ph.fade.in img { opacity: 0; }
+.ph.fade.in.on img { opacity: 1; }
+.ph.out { opacity: 0; transition: opacity .6s ease; }
+
+/* 粒子（フィルムグレイン）とビネット：全画面の一番上 */
+.grain { position: absolute; inset: -50%; pointer-events: none; opacity: .09; mix-blend-mode: overlay; animation: grain .5s steps(4) infinite; z-index: 50; }
+@keyframes grain { 0% { transform: translate(0, 0); } 25% { transform: translate(-3%, 2%); } 50% { transform: translate(2%, -3%); } 75% { transform: translate(-2%, -1%); } 100% { transform: translate(0, 0); } }
+
+/* ---------- 文字の動き ---------- */
+.in { opacity: 0; transition: opacity .6s var(--out), transform 1s var(--out); }
+.in.on { opacity: 1; }
+.in.rise { transform: translateY(28px); } .in.rise.on { transform: none; }
+.out { opacity: 0 !important; transition: opacity .35s ease; }
+/* 1文字ずつ、マスクの下からせり上がる */
+.split.in, .slam.in, .type.in { opacity: 1; }
+.ch { display: inline-block; overflow: hidden; vertical-align: bottom; padding: 0 .01em .08em; margin-bottom: -.08em; }
+.ch > span { display: inline-block; transform: translateY(112%); transition: transform 1s var(--ease); transition-delay: calc(var(--i) * 30ms + var(--d, 0ms)); }
+.on .ch > span { transform: none; }
+/* 叩きつける */
+.slam .ch { overflow: visible; }
+.slam .ch > span { transform: scale(2.6); filter: blur(16px); opacity: 0; transition: transform .5s var(--out), filter .5s var(--out), opacity .15s; transition-delay: calc(var(--i) * 40ms + var(--d, 0ms)); }
+.slam.on .ch > span { transform: none; filter: none; opacity: 1; }
+/* タイプライター（1文字ずつ現れる・静かな場面） */
+.type .ch { overflow: visible; }
+.type .ch > span { transform: none; opacity: 0; transition: opacity .01s; transition-delay: calc(var(--i) * 70ms + var(--d, 0ms)); }
+.type.on .ch > span { opacity: 1; }
+[data-d="1"] { --d: 300ms; transition-delay: .3s; } [data-d="2"] { --d: 700ms; transition-delay: .7s; } [data-d="3"] { --d: 1100ms; transition-delay: 1.1s; } [data-d="4"] { --d: 1600ms; transition-delay: 1.6s; } [data-d="5"] { --d: 2300ms; transition-delay: 2.3s; }
+
+/* ---------- 文字の階層（差を極端に） ---------- */
+.mega { font-size: 280px; line-height: .92; font-weight: 900; letter-spacing: -0.02em; }
+.xxl { font-size: 180px; line-height: 1; font-weight: 900; letter-spacing: -0.01em; }
+.xl { font-size: 124px; line-height: 1.06; font-weight: 900; }
+.l { font-size: 80px; line-height: 1.14; font-weight: 900; }
+.m { font-size: 52px; line-height: 1.3; font-weight: 800; }
+.lead { font-size: 32px; line-height: 1.7; font-weight: 500; }
+.mono { font-family: var(--mono); font-size: 16px; line-height: 1.6; letter-spacing: .1em; text-transform: uppercase; opacity: .8; }
+.ac { color: var(--accent); }
+.num { font-family: var(--en); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
+.sh { text-shadow: 0 6px 50px rgba(0,0,0,.5); }
+.tag { display: inline-flex; align-items: center; gap: 14px; font: 500 16px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+.tag::before { content: ""; width: 48px; height: 1px; background: currentColor; }
+
+/* ---------- 図面枠（静かに） ---------- */
+.frame { position: absolute; inset: 24px; border: 1px solid var(--line); pointer-events: none; z-index: 40; }
+.titleblock { position: absolute; right: 24px; bottom: 24px; width: 440px; border-left: 1px solid var(--line); border-top: 1px solid var(--line); font: 500 12px/1 var(--mono); letter-spacing: .1em; pointer-events: none; z-index: 40; }
+.tb-row { display: flex; justify-content: space-between; align-items: center; height: 30px; padding: 0 16px; }
+.tb-row + .tb-row { border-top: 1px solid var(--line); }
+
+/* ---------- フックの部品 ---------- */
+/* 3択カード：めくれて出る → 外れは沈み、正解だけ前へ */
+.cards { display: flex; gap: 32px; }
+.card { width: 480px; height: 300px; padding: 32px; display: flex; flex-direction: column; justify-content: space-between; background: rgba(236,233,227,.06); border: 1px solid rgba(236,233,227,.35); backdrop-filter: blur(6px); transform-origin: 50% 100%; transition: transform .9s var(--snap), opacity .6s, filter .6s, background .6s, border-color .6s; }
+.card .k { font: 500 20px/1 var(--mono); letter-spacing: .1em; opacity: .7; }
+.card .v { font-size: 64px; font-weight: 900; line-height: 1.1; }
+.cards.in .card { transform: perspective(900px) rotateX(-90deg); }
+.cards.in.on .card { transform: none; }
+.cards .card:nth-child(2) { transition-delay: .12s; } .cards .card:nth-child(3) { transition-delay: .24s; }
+.cards.reveal .card { transition-delay: 0s; }
+.cards.reveal .card.no { opacity: .18; filter: blur(2px); transform: translateY(40px) scale(.94); }
+.cards.reveal .card.yes { background: var(--accent); border-color: var(--accent); color: #fff; transform: translateY(-16px) scale(1.06); }
+
+/* 取り消し線 → 書き換え */
+.strike { position: relative; display: inline-block; }
+.strike::after { content: ""; position: absolute; left: -2%; top: 52%; height: .09em; width: 0; background: var(--accent); transform: rotate(-3deg); transition: width .5s var(--ease); transition-delay: var(--sd, .6s); }
+.on .strike::after, .strike.on::after { width: 104%; }
+.swap { display: inline-block; transform: translateY(60%) rotate(4deg); opacity: 0; transition: transform .7s var(--snap), opacity .3s; transition-delay: var(--wd, 1.2s); }
+.on .swap { transform: none; opacity: 1; }
+
+/* ✕ スタンプ */
+.stamp { width: 560px; height: 560px; transform: scale(3) rotate(-25deg); opacity: 0; transition: transform .35s cubic-bezier(.3,1.5,.5,1), opacity .1s; transition-delay: var(--d, .5s); }
+.stamp.on { transform: rotate(-8deg); opacity: 1; }
+.stamp svg { width: 100%; height: 100%; }
+
+/* 割り込み：横から一瞬だけ入ってくる写真（笑いどころ） */
+.intrude { width: 760px; height: 470px; box-shadow: 0 30px 80px rgba(0,0,0,.6); border: 10px solid #fff; transform: translateX(140%) rotate(8deg); transition: transform .6s var(--snap); transition-delay: var(--d, 1.2s); overflow: hidden; }
+.intrude.on { transform: rotate(-3deg); }
+.intrude img { width: 100%; height: 100%; object-fit: cover; }
+.intrude .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 20px; background: #fff; color: #111; font-size: 28px; font-weight: 800; }
+
+/* 人の数のドット */
+.dots { display: grid; grid-template-columns: repeat(20, 28px); gap: 12px; }
+.dots i { width: 28px; height: 28px; border-radius: 50%; background: var(--paper); transition: opacity .4s, transform .4s var(--out); transition-delay: calc(var(--n) * 25ms + 1.2s); }
+.dots.on i.gone { opacity: .1; transform: scale(.5); }
+
+/* 引き出し線（図面の注記） */
+.lead-line { overflow: visible; }
+.lead-line path { fill: none; stroke: var(--paper); stroke-width: 2; stroke-dasharray: 1600; stroke-dashoffset: 1600; transition: stroke-dashoffset 1.1s var(--ease); transition-delay: var(--d, 0s); }
+.lead-line circle { fill: var(--paper); transform-box: fill-box; transform-origin: center; transform: scale(0); transition: transform .4s var(--snap); transition-delay: var(--d, 0s); }
+.lead-line.on path { stroke-dashoffset: 0; }
+.lead-line.on circle { transform: scale(1); }
+.note-box { font-size: 40px; font-weight: 900; line-height: 1.1; }
+.note-box small { display: block; font: 500 15px/1.5 var(--mono); letter-spacing: .1em; opacity: .75; margin-top: 6px; text-transform: uppercase; }
+
+/* 割合のバー */
+.bars { width: 760px; }
+.bar { display: grid; grid-template-columns: 200px 1fr 120px; align-items: center; gap: 24px; height: 76px; border-bottom: 1px solid var(--line); }
+.bar b { font-size: 34px; font-weight: 900; }
+.bar .track { height: 14px; background: rgba(236,233,227,.1); position: relative; }
+.bar .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--paper); transition: width 1.2s var(--ease); transition-delay: calc(var(--n) * 120ms + .3s); }
+.bars.on .fill { width: var(--w); }
+.bar .num { font-size: 48px; text-align: right; }
+.bar.hi .fill { background: var(--accent); } .bar.hi b, .bar.hi .num { color: var(--accent); }
+
+/* 画面全体の動き（押される・引っぱられる・割れる） */
+.press.in img { transform: scale(1.08); }
+.press.on img { animation: press 1.4s var(--ease) .3s both; }
+@keyframes press { 0% { transform: scale(1.08); } 55% { transform: scale(1.08, .82); } 70% { transform: scale(1.08, .88); } 100% { transform: scale(1.08, .86); } }
+.pull { inset: 0; display: grid; grid-template-columns: 1fr 1fr; }
+.pull > div { position: relative; overflow: hidden; }
+.pull img { position: absolute; top: 0; width: 1920px; height: 1080px; object-fit: cover; filter: saturate(.82) contrast(1.06) brightness(.8); }
+.pull > div:first-child img { left: 0; } .pull > div:last-child img { right: 0; }
+.pull > div { transition: transform 1.2s var(--ease) .6s; }
+.pull.on > div:first-child { transform: translateX(-90px); } .pull.on > div:last-child { transform: translateX(90px); }
+
+/* 衝撃（揺れ＋白フラッシュ）：.impact の要素が出た瞬間 */
+.flash { inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 45; }
+.flash.on { animation: flash .35s ease-out var(--d, 0s) both; }
+@keyframes flash { 0% { opacity: .85; } 100% { opacity: 0; } }
+.stage.shake { animation: shake .45s cubic-bezier(.36,.07,.19,.97) both; }
+@keyframes shake { 10%, 90% { margin-left: -3px; } 20%, 80% { margin-left: 6px; } 30%, 50%, 70% { margin-left: -12px; } 40%, 60% { margin-left: 12px; } }
+
+/* ひび（SVGで描かれていく） */
+.crack-svg { inset: 0; width: 1920px; height: 1080px; }
+.crack-svg path { fill: none; stroke: #0a0a0a; stroke-linecap: round; stroke-dasharray: 2400; stroke-dashoffset: 2400; transition: stroke-dashoffset .45s cubic-bezier(.2,.9,.2,1); transition-delay: calc(var(--n) * 30ms + var(--d, 0ms)); filter: drop-shadow(1px 1px 0 rgba(255,255,255,.25)); }
+.crack-svg.on path { stroke-dashoffset: 0; }
+
+/* タイマー */
+.timer-ring { width: 600px; height: 600px; }
+.timer-ring circle { fill: none; stroke-width: 16; }
+.timer-txt { font: 800 200px/1 var(--en); font-variant-numeric: tabular-nums; text-align: center; width: 600px; }
+
+/* 暗転 */
+.blackout { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity .4s; pointer-events: none; z-index: 60; }
+.stage.black .blackout { opacity: 1; }
+
+/* 撮影モード（?still）：動きを最後まで飛ばす */
+.stage.still *, .stage.still *::before, .stage.still *::after { transition-duration: 0s !important; transition-delay: 0s !important; }
