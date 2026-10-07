@@ -196,6 +196,7 @@ window.__slides = {
   count: STEPS.length,
   go: (i) => {
     go(i, { instant: true });
+    state.at = now() - 30; // 同じ番号でも「動き終わった状態」にする
     if (STILL) drawOnce();
   },
 };

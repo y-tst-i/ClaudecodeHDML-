@@ -11,8 +11,8 @@ export const STEPS = [
   // ── 1. 壁に彫られたタイトルが、横からの光で浮かび上がる
   {
     scene: 'wall',
-    from: { light: -0.6, lightY: 0.5, shade: 0.2 },
-    p: { light: 0.46, lightY: 0.7, lightZ: 1.0, shade: 0, title: { lines: [{ text: 'コンクリート', x: 132, y: 560, size: 230 }, { text: '勉強会', x: 132, y: 820, size: 230 }] } },
+    from: { light: -0.6, lightY: 0.45, lightZ: 1.1, fall: 0.32, shade: 0.2 },
+    p: { light: 0.4, lightY: 0.45, lightZ: 1.1, fall: 0.32, shade: 0, title: { lines: [{ text: 'コンクリート', x: 132, y: 560, size: 230 }, { text: '勉強会', x: 132, y: 820, size: 230 }] } },
     dur: 3.6,
     html: `
       <div class="tag mono" style="left:136px;top:120px" data-k="tag">Concrete study session — 2026</div>
@@ -30,11 +30,11 @@ export const STEPS = [
   // ── 3. 答え：壁にひびが走る
   {
     scene: 'wall',
-    p: { light: 0.85, lightY: 0.2, zoom: 2.4, panX: 0.5, panY: 0.25, shade: 0.5, crack: 1 },
+    p: { light: 0.85, lightY: 0.2, zoom: 2.4, panX: 0.5, panY: 0.25, shade: 0.5, crack: 1, crackX: 0.8, crackY: 0.66 },
     dur: 0.8, ease: 'expo', impact: 0.05,
     html: `
       <div class="tag mono" style="left:136px;top:120px" data-k="q0">Answer</div>
-      <h2 class="mega slam ac shadow" style="left:120px;top:330px" data-k="a1">コンクリート</h2>
+      <h2 class="mega slam shadow" style="left:120px;top:330px" data-k="a1">コンクリート</h2>
       <p class="lead split" style="left:136px;top:640px" data-k="a2" data-d="3">セメントだけで、世界で年間 約40億トンつくられている。</p>`,
   },
   // ── 4. 生コンが流れ込み、固まって割れると「01」
@@ -98,8 +98,8 @@ export const STEPS = [
   // ── 9. パンテオンの中から、天窓を見上げる
   {
     scene: 'pantheon', trans: 'fade',
-    from: { look: -0.15, camY: 1.7, camR: 14, beam: 0, fov: 60, yaw: -0.42 },
-    p: { look: 0.85, camY: 1.7, camR: 14, beam: 0.4, fov: 78, yaw: -0.42 },
+    from: { look: -0.15, camY: 1.7, camR: 14, beam: 0, fov: 60, offset: -18 },
+    p: { look: 0.85, camY: 1.7, camR: 14, beam: 0.4, fov: 78, offset: -18 },
     dur: 4.0, section: S2,
     html: `
       <div class="tag mono" style="left:136px;top:120px" data-k="p0">Question 02</div>
@@ -107,15 +107,15 @@ export const STEPS = [
   },
   {
     scene: 'pantheon',
-    p: { look: 0.85, camY: 1.7, camR: 14, beam: 0.55, fov: 78, yaw: -0.42 },
+    p: { look: 0.85, camY: 1.7, camR: 14, beam: 0.55, fov: 78, offset: -18 },
     dur: 1.0, impact: 0.05, section: S2,
     html: `
       <div class="tag mono" style="left:136px;top:120px" data-k="p0">Pantheon, Rome — c. AD 125</div>
-      <h2 class="mega slam shadow" style="left:120px;top:190px" data-k="p2">約<span class="ac">1900</span>年前</h2>
-      <div style="left:136px;top:520px;width:760px" data-k="p3" data-d="3">
+      <h2 class="xl split shadow" style="left:128px;top:220px" data-k="p2">約<span class="ac num">1900</span>年前</h2>
+      <div style="left:136px;top:420px;width:640px" data-k="p3" data-d="3">
         <div class="dim" style="position:relative"></div>
         <div class="mono" style="margin-top:16px;display:flex;justify-content:space-between"><span>Ø 43.3 m</span><span>No rebar</span><span>Still standing</span></div>
       </div>
-      <p class="lead split shadow" style="left:136px;top:640px" data-k="p4" data-d="4">直径43.3m。鉄筋なしで、今も建っている。</p>`,
+      <p class="lead split shadow" style="left:136px;top:520px" data-k="p4" data-d="4">直径43.3m。鉄筋なしで、今も建っている。</p>`,
   },
 ];

@@ -1,5 +1,5 @@
 :root {
-  --paper: #ebe8e2; --ink: #121212; --accent: #ff5a1f; --line: rgba(235,232,226,.55);
+  --paper: #ebe8e2; --ink: #121212; --accent: #ff5a1f; --line: rgba(235,232,226,.28);
   --jp: "Noto Sans JP Variable", "Hiragino Sans", sans-serif;
   --en: "Inter Variable", "Helvetica Neue", Arial, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, monospace;
@@ -9,7 +9,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .stage { position: fixed; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: 50% 50%; overflow: hidden; font-family: var(--jp); color: var(--paper); letter-spacing: 0; font-feature-settings: "palt"; }
-.stage[data-tone="light"] { color: var(--ink); --line: rgba(18,18,18,.45); }
+.stage[data-tone="light"] { color: var(--ink); --line: rgba(18,18,18,.3); }
 #gl { position: absolute; inset: 0; width: 1920px; height: 1080px; }
 .layer { position: absolute; inset: 0; pointer-events: none; }
 .layer > * { position: absolute; margin: 0; }
