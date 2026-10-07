@@ -1,0 +1,23 @@
+/* UIルール：8の倍数 / ボタン高さ32px / 角丸なし / ホバーは色の変化だけ / UI英字の字間0 */
+:root {
+  --ui-bg: rgba(10, 10, 12, 0.64);
+  --ui-fg: #f4f1ea;
+  --ui-line: rgba(244, 241, 234, 0.72);
+  --theme: #ff481b;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #000; color: var(--ui-fg); font: 500 12px/1 Inter, "Helvetica Neue", Arial, sans-serif; letter-spacing: 0; }
+#stage { position: fixed; inset: 0; display: grid; place-items: center; overflow: hidden; touch-action: none; user-select: none; }
+#stage canvas { width: min(100vw, calc(100vh * 16 / 9)); height: auto; aspect-ratio: 16 / 9; display: block; }
+
+.header { position: fixed; top: 16px; left: 16px; right: 16px; height: 32px; display: flex; align-items: center; justify-content: space-between; z-index: 2; pointer-events: none; }
+.header__title { font-weight: 700; }
+.btn { pointer-events: auto; height: 32px; padding: 0 16px; display: inline-flex; align-items: center; border: 1px solid var(--ui-line); border-radius: 0; background: var(--ui-bg); color: var(--ui-fg); font: inherit; text-decoration: none; cursor: pointer; transition: background-color .2s, color .2s; }
+[hidden] { display: none !important; }
+.btn:hover { background: var(--ui-fg); color: #0a0a0c; }
+.replay { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 2; }
+
+.action { position: absolute; width: 0; height: 0; pointer-events: none; }
+.action__dot { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border: 1px solid var(--ui-fg); border-radius: 50%; }
+.action__line { position: absolute; left: 0; top: -64px; width: 1px; height: 56px; background: var(--ui-line); }
+.action__label { position: absolute; left: 0; top: -96px; height: 32px; padding: 0 16px; display: flex; align-items: center; white-space: nowrap; background: var(--ui-bg); backdrop-filter: blur(8px); font-variant-numeric: tabular-nums; }

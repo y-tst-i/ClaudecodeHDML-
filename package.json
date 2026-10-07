@@ -1,0 +1,20 @@
+{
+  "name": "code-showreel-starter",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "render": "node scripts/render.mjs",
+    "cuts": "node scripts/render.mjs --stills",
+    "probe": "node scripts/probe.mjs"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1",
+    "vite": "^8.3.3"
+  }
+}
