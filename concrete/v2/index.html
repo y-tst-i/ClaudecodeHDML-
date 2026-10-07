@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>コンクリート勉強会</title>
+  </head>
+  <body>
+    <div class="stage" id="stage">
+      <canvas id="gl" width="1920" height="1080"></canvas>
+      <div class="layer" id="layer"></div>
+      <!-- 図面枠：外周の細い線と目盛り、右下の表題欄 -->
+      <div class="frame"><i class="ticks-x"></i><i class="ticks-y"></i></div>
+      <div class="titleblock">
+        <div class="tb-row tb-head"><span>CONCRETE STUDY SESSION</span><span>2026</span></div>
+        <div class="tb-row"><span id="tbSection"></span><span id="tbSheet"></span></div>
+      </div>
+      <div class="blackout"></div>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
