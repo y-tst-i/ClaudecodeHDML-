@@ -135,13 +135,15 @@ if (mode === 'time') {
 
 // コンタクトシート：ブラウザで並べて撮る（ffmpeg 等に依存しない）
 const label = opt('label', path.basename(out));
-const imgs = await Promise.all(shots.map(async (s) => ({ ...s, src: `data:image/png;base64,${(await readFile(path.join(out, s.file))).toString('base64')}` })));
+// 画像は埋め込まずファイルを参照する（枚数が多くても重くならない）
+const imgs = shots.map((s) => ({ ...s, src: s.file }));
 const cols = mode === 'page' ? Math.min(shots.length, 2) : Math.min(shots.length, 4);
 const sheet = await browser.newPage({ viewport: { width: 1600, height: 900 } });
-await sheet.setContent(`<style>body{margin:0;padding:24px;background:#111;color:#eee;font:13px/1.4 system-ui,sans-serif}
+await writeFile(path.join(out, 'sheet.html'), `<!doctype html><meta charset="utf-8"><style>body{margin:0;padding:24px;background:#111;color:#eee;font:13px/1.4 system-ui,sans-serif}
 h1{font-size:16px;margin:0 0 16px}.g{display:grid;grid-template-columns:repeat(${cols},1fr);gap:16px;align-items:start}
 figure{margin:0}img{max-width:100%;max-height:760px;display:block;outline:1px solid #333}figcaption{padding:8px 0 0;color:#aaa}</style>
 <h1>${label} — ${mode} — ${url}</h1><div class="g">${imgs.map((s) => `<figure><img src="${s.src}"><figcaption>${s.id}</figcaption></figure>`).join('')}</div>`);
+await sheet.goto(pathToFileURL(path.resolve(out, 'sheet.html')).href);
 await sheet.screenshot({ path: path.join(out, 'sheet.png'), fullPage: true });
 
 const md = `# Review — ${label}\n\n対象: ${url}  \nモード: ${mode}\n\n` +

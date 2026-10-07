@@ -130,8 +130,8 @@ export const STEPS = [
       ${tag('Mix design — cross section', 'm0')}
       <h2 class="l split sh" style="left:120px;top:190px" data-k="m1">断面を見ると、<br>5つでできている。</h2>
       ${note(1250, 360, 128, 520, '砂利', 'Coarse aggregate', 0.6, 'n1')}
-      ${note(1404, 590, 128, 640, '空気', 'Air void', 0.9, 'n2')}
-      ${note(1330, 520, 128, 760, '砂', 'Fine aggregate', 1.2, 'n3')}
+      ${note(1330, 520, 128, 640, '砂', 'Fine aggregate', 0.9, 'n3')}
+      ${note(1404, 590, 128, 760, '空気', 'Air void', 1.2, 'n2')}
       ${note(1560, 820, 128, 880, 'セメント＋水', 'Paste — the glue', 1.5, 'n4')}`,
   },
   {
@@ -201,10 +201,10 @@ export const STEPS = [
   },
   {
     section: S2, html: `
-      ${ph('roman_concrete_macro', { kb: 'in', mode: 'iris', shade: 0.6, ox: '60%' })}
+      ${ph('roman_concrete_macro', { kb: 'in', mode: 'iris', shade: 0.85, ox: '60%' })}
       ${tag('Science Advances, 2023', 'r0')}
       <h2 class="l split sh" style="left:120px;top:220px" data-k="r1">ローマのコンクリートは、<br>ひびを<span class="ac">自分で治していた</span>。</h2>
-      <p class="lead in rise sh" style="left:128px;top:520px;width:880px" data-k="r2" data-d="3">中の白い石灰の粒が、ひびに入った水と反応して、すき間を埋める。</p>`,
+      <p class="lead in rise sh" style="left:128px;top:520px;width:880px" data-k="r2" data-d="3">中の白い石灰の粒が、ひびに入った水と反応して、<br>すき間を埋める。</p>`,
   },
   {
     section: S2, html: `
@@ -258,7 +258,7 @@ export const STEPS = [
   },
   {
     section: S3, html: `
-      ${ph('slump_test', { kb: 'in', shade: 0.6 })}
+      ${ph('slump_test', { kb: 'in', shade: 0.85 })}
       ${tag('Water-cement ratio', 'wc0')}
       <h2 class="l split sh" style="left:120px;top:250px" data-k="wc1">水を足すと、<br>流しやすいけど<span class="ac">弱くなる</span>。</h2>
       <p class="lead in rise sh" style="left:128px;top:560px" data-k="wc2" data-d="3">だから現場で、生コンに水を足すのは厳禁。</p>`,
@@ -267,7 +267,7 @@ export const STEPS = [
     section: S3, html: `
       <div class="ph fade flat" style="${KB.still};--shade:0" data-k="ph-curry"><img data-img="curry" alt=""></div>
       ${X(1220, 240, 600, 0.9)}
-      <h2 class="xl slam" style="left:120px;top:780px;color:#111" data-k="cr1" data-d="2">カレーとは違います。</h2>`,
+      <h2 class="xl slam" style="left:110px;top:90px;color:#111" data-k="cr1" data-d="2">カレーとは<br>違います。</h2>`,
     tone: 'light',
   },
 
@@ -313,7 +313,7 @@ export const STEPS = [
   },
   {
     section: S4, html: `
-      ${ph('hero_wall', { kb: 'in', mode: 'fade', shade: 0.55, k: 'breathe' })}
+      ${ph('hero_wall', { kb: 'in', mode: 'fade', shade: 0.85, k: 'breathe' })}
       ${tag('Carbonation', 'co0')}
       <h2 class="l split sh" style="left:120px;top:250px" data-k="co1">コンクリートは何十年もかけて、<br>空気中の CO₂ を<span class="ac">少しずつ吸っている</span>。</h2>
       <p class="lead in rise sh" style="left:128px;top:560px;width:860px" data-k="co2" data-d="3">つくるときに出す CO₂ をどう減らすか。工場生産は、その答えの一つ。</p>`,
