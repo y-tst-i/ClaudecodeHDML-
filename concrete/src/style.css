@@ -1,0 +1,68 @@
+/* 画面は 1920x1080 固定で作り、ウィンドウに合わせて拡縮する */
+:root {
+  --paper: #e7e3dc; --ink: #151515; --sub: #6b665e; --accent: #ff5a1f;
+  --jp: "Noto Sans JP Variable", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --en: "Inter Variable", "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: default; }
+.stage { position: fixed; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: 50% 50%; overflow: hidden; font-family: var(--jp); color: var(--ink); letter-spacing: 0; font-feature-settings: "palt"; }
+.stage[data-tone="dark"] { color: var(--paper); }
+#world { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+.layer { position: absolute; inset: 0; pointer-events: none; }
+.layer > * { position: absolute; margin: 0; }
+
+/* 出入りの動き：下から少し上がって現れる。data-d で遅らせる */
+.in { opacity: 0; transform: translateY(32px); transition: opacity .7s cubic-bezier(.2,.8,.2,1), transform .9s cubic-bezier(.2,.8,.2,1); }
+.in.on { opacity: 1; transform: none; }
+.out { opacity: 0 !important; transition: opacity .35s ease; }
+[data-d="1"] { transition-delay: .15s; } [data-d="2"] { transition-delay: .3s; } [data-d="3"] { transition-delay: .45s; } [data-d="4"] { transition-delay: .6s; }
+
+/* 文字の階層：1画面に「肝」は1つ */
+.xxl { font-size: 176px; line-height: 1.04; font-weight: 900; }
+.xl  { font-size: 116px; line-height: 1.1; font-weight: 900; }
+.l   { font-size: 76px; line-height: 1.2; font-weight: 850; }
+.m   { font-size: 48px; line-height: 1.35; font-weight: 800; }
+.lead { font-size: 34px; line-height: 1.65; font-weight: 500; }
+.note { font-size: 20px; line-height: 1.6; font-weight: 500; color: var(--sub); }
+.stage[data-tone="dark"] .note { color: rgba(231,227,220,.6); }
+.ac { color: var(--accent); }
+.en { font-family: var(--en); }
+.num { font-family: var(--en); font-weight: 800; font-variant-numeric: tabular-nums; }
+.chip { display: inline-flex; align-items: center; height: 40px; padding: 0 16px; font: 700 20px/1 var(--en); background: var(--ink); color: var(--paper); }
+.stage[data-tone="dark"] .chip { background: var(--paper); color: var(--ink); }
+.on-tex { color: #fff; text-shadow: 0 2px 24px rgba(0,0,0,.45); }
+
+/* 配置 */
+.tl { left: 120px; top: 112px; }
+.bl { left: 120px; bottom: 136px; }
+.cc { left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; }
+.cc.in { transform: translateY(calc(-50% + 32px)); } .cc.in.on { transform: translateY(-50%); }
+.rp { left: 1184px; width: 640px; }
+
+/* 配合の表（右パネル） */
+.row { display: grid; grid-template-columns: 1fr auto; align-items: end; width: 616px; padding: 16px 0; border-bottom: 2px solid rgba(21,21,21,.85); }
+.row b { font-size: 40px; font-weight: 850; }
+.row small { display: block; font-size: 20px; font-weight: 500; color: var(--sub); }
+.row .num { font-size: 64px; line-height: 1; }
+.bar { height: 24px; background: var(--ink); }
+
+/* 章の扉 */
+.card-num { font: 800 280px/0.9 var(--en); color: var(--accent); }
+
+/* 時間の目盛り（水和反応） */
+.ticks { display: flex; gap: 8px; }
+.ticks span { height: 40px; padding: 0 16px; display: inline-flex; align-items: center; font-size: 22px; font-weight: 700; border: 1px solid rgba(231,227,220,.4); color: rgba(231,227,220,.55); }
+.ticks span.is { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+
+/* メリットの4マス */
+.cell { width: 760px; }
+.cell .num { font-size: 40px; color: var(--accent); }
+.cell .m { margin-top: 8px; }
+
+/* 進行表示（静かに） */
+.hud { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 40px; font: 600 16px/1 var(--jp); color: rgba(21,21,21,.5); pointer-events: none; }
+.stage[data-tone="dark"] .hud { color: rgba(231,227,220,.45); }
+.hud__count { font-family: var(--en); font-variant-numeric: tabular-nums; }
+.hud__bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; }
+.hud__bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .6s cubic-bezier(.2,.8,.2,1); }
