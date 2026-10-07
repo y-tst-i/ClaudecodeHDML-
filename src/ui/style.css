@@ -7,8 +7,11 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #000; color: var(--ui-fg); font: 500 12px/1 Inter, "Helvetica Neue", Arial, sans-serif; letter-spacing: 0; }
-#stage { position: fixed; inset: 0; display: grid; place-items: center; overflow: hidden; touch-action: none; user-select: none; }
-#stage canvas { width: min(100vw, calc(100vh * 16 / 9)); height: auto; aspect-ratio: 16 / 9; display: block; }
+#stage { position: fixed; inset: 0; overflow: hidden; touch-action: none; user-select: none; }
+/* 横長の画面では全体を収め、縦長（スマホ）では高さいっぱいにして左右をトリミングする */
+.frame { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); aspect-ratio: 16 / 9; width: min(100vw, calc(100dvh * 16 / 9)); }
+@media (orientation: portrait) { .frame { width: auto; height: 100dvh; } }
+.frame canvas { width: 100%; height: 100%; display: block; }
 
 .header { position: fixed; top: 16px; left: 16px; right: 16px; height: 32px; display: flex; align-items: center; justify-content: space-between; z-index: 2; pointer-events: none; }
 .header__title { font-weight: 700; }

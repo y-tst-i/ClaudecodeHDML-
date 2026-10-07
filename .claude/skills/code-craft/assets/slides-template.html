@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deck</title>
+<!--
+  1枚 = 1920x1080 の <section data-slide>。画面に合わせて拡縮、←→ / クリックで送る。
+  shoot.mjs は window.__slides を使って全枚数を撮る（--pdf で PDF 書き出し）。
+  トークン（色・文字・余白）は :root に集約。デッキのトンマナはここだけで決める。
+-->
+<style>
+  :root {
+    --bg: #f4f1ea; --ink: #0b0b0c; --sub: #6b6862; --accent: #ff481b; --line: #d9d4ca;
+    --font: "Inter", "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif;
+    --u: 8px;            /* 余白は 8 の倍数 */
+    --pad: calc(var(--u) * 15);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  .deck { position: fixed; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: 0 0; }
+  section[data-slide] {
+    position: absolute; inset: 0; padding: var(--pad); display: none; flex-direction: column;
+    background: var(--bg); color: var(--ink); font: 500 32px/1.5 var(--font); letter-spacing: 0;
+  }
+  section[data-slide].is-active { display: flex; }
+  .eyebrow { font-size: 24px; color: var(--sub); }
+  h1 { font-size: 144px; line-height: 1.05; font-weight: 900; margin: auto 0 0; }
+  h2 { font-size: 72px; line-height: 1.15; font-weight: 800; margin: 0 0 calc(var(--u) * 6); }
+  .accent { color: var(--accent); }
+  .folio { position: absolute; right: var(--pad); bottom: calc(var(--u) * 6); font-size: 20px; color: var(--sub); font-variant-numeric: tabular-nums; }
+  /* 1枚に1つの「肝」。それ以外は控えめに（緩急） */
+  .hero-number { font-size: 320px; font-weight: 900; line-height: 1; color: var(--accent); margin-top: auto; }
+
+  @media print {
+    @page { size: 1920px 1080px; margin: 0; }
+    html, body { background: none; overflow: visible; height: auto; }
+    .deck { position: static; transform: none !important; }
+    section[data-slide] { position: relative; display: flex !important; width: 1920px; height: 1080px; break-after: page; }
+  }
+</style>
+</head>
+<body>
+<div class="deck">
+  <section data-slide>
+    <div class="eyebrow">2026 / Project name</div>
+    <h1>一行で言える<br><span class="accent">タイトル</span></h1>
+  </section>
+  <section data-slide>
+    <h2>このスライドで言いたいことを1文で</h2>
+    <p>補足は短く。1枚に要素を詰めない。</p>
+  </section>
+  <section data-slide>
+    <div class="eyebrow">Key number</div>
+    <div class="hero-number">3x</div>
+    <p>数字が肝のスライドは、数字だけを大きく。</p>
+  </section>
+</div>
+<script>
+  const slides = [...document.querySelectorAll('section[data-slide]')];
+  const deck = document.querySelector('.deck');
+  let cur = 0;
+  function go(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => s.classList.toggle('is-active', k === cur));
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  function fit() {
+    const k = Math.min(innerWidth / 1920, innerHeight / 1080);
+    deck.style.transform = `scale(${k}) translate(-50%, -50%)`;
+  }
+  slides.forEach((s, i) => { const f = document.createElement('div'); f.className = 'folio'; f.textContent = `${i + 1} / ${slides.length}`; s.appendChild(f); });
+  addEventListener('resize', fit);
+  addEventListener('keydown', (e) => { if (['ArrowRight', ' ', 'PageDown'].includes(e.key)) go(cur + 1); if (['ArrowLeft', 'PageUp'].includes(e.key)) go(cur - 1); });
+  addEventListener('click', () => go(cur + 1));
+  window.__slides = { count: slides.length, go };
+  fit(); go((parseInt(location.hash.slice(1)) || 1) - 1);
+</script>
+</body>
+</html>

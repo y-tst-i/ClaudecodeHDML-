@@ -12,11 +12,16 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(1);
 renderer.setSize(CONFIG.width, CONFIG.height, false); // 内部解像度は固定、表示はCSSで拡縮
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-document.getElementById('stage').appendChild(renderer.domElement);
+// .frame = 16:9 の画面。キャンバスと操作ラベルが同じ座標系に乗る
+const frame = document.createElement('div');
+frame.className = 'frame';
+frame.appendChild(renderer.domElement);
+document.getElementById('stage').appendChild(frame);
 
 const timeline = createTimeline(renderer);
 
 if (mode === 'render') {
+  window.__seek = (t) => timeline.render(t); // code-craft の shoot.mjs が使う
   window.__showreel = {
     ...CONFIG,
     seek(t) {

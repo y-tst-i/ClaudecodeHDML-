@@ -24,3 +24,15 @@ npm run probe -- 2.5 5 12   # 指定秒のフレームだけ out/probe/sheet.png
 | カット表のデータとFB欄 | `src/cuts.js` → `docs/CUTSHEET.md` |
 
 学び方は [docs/LEARNING.md](docs/LEARNING.md) を見てください。
+
+## スキル：code-craft
+
+`.claude/skills/code-craft/` に、このやり方を**映像・サイト・スライドのどれにも使えるClaude Codeスキル**としてまとめています。
+このリポジトリで Claude Code を開くと自動で使われます。別のプロジェクトでも使うなら `~/.claude/skills/` にコピーしてください。
+
+```bash
+# 撮って一覧シート＋FB表を作る（ページのAPIを見て撮り方を自動判定）
+node .claude/skills/code-craft/scripts/shoot.mjs "http://localhost:5173/?mode=render" --times 0.5,5,12
+node .claude/skills/code-craft/scripts/shoot.mjs deck.html --mode slides --pdf
+node .claude/skills/code-craft/scripts/shoot.mjs http://localhost:5173 --viewports desktop,mobile --full
+```

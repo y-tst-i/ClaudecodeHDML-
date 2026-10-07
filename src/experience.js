@@ -18,7 +18,7 @@ export function startExperience(timeline) {
   header.innerHTML = `<span class="header__title">Code Showreel</span><a class="btn" href="?mode=film">Watch film</a>`;
   document.body.appendChild(header);
 
-  const label = createActionLabel(document.getElementById('stage'));
+  const label = createActionLabel(document.querySelector('.frame'));
   let t = 0, step = 0, phase = 'play', remaining = 0, last = performance.now();
 
   function enterHold() {
