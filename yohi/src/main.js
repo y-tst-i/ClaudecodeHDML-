@@ -3,7 +3,9 @@ import { frag, DURATION } from './film.js';
 
 // ?mode=render のとき window.__seek / __showreel を出す（scripts/render.mjs・shoot.mjs 用）
 THREE.ColorManagement.enabled = false;
-const mode = new URLSearchParams(location.search).get('mode') ?? 'film';
+const params = new URLSearchParams(location.search);
+const mode = params.get('mode') ?? 'film';
+// ?c3=b&c4=b で B案（既定は A案）
 const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: mode === 'render' });
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 renderer.setPixelRatio(1);
@@ -16,7 +18,7 @@ const files = {
   tCrt: '../assets/tex/crt_glass.png', tMetal: '../assets/tex/metal_brushed.png',
 };
 const loader = new THREE.TextureLoader();
-const uniforms = { uT: { value: 0 }, uRes: { value: new THREE.Vector2(1920, 1080) } };
+const uniforms = { uT: { value: 0 }, uC3: { value: params.get('c3') === 'b' ? 1 : 0 }, uC4: { value: params.get('c4') === 'b' ? 1 : 0 }, uRes: { value: new THREE.Vector2(1920, 1080) } };
 await Promise.all(Object.entries(files).map(async ([k, f]) => {
   const tex = await loader.loadAsync(new URL(f, import.meta.url).href).catch(() => new THREE.DataTexture(new Uint8Array([40, 40, 40, 255]), 1, 1));
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;

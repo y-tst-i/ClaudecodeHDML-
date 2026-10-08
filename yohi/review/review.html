@@ -65,6 +65,21 @@ section > h3 { margin: 0 0 8px; font: 600 12px/1.4 var(--mono); color: var(--sub
 .stance .chip[data-v="disagree"][aria-pressed="true"] { background: var(--huh); border-color: var(--huh); color: #0f0f10; }
 .hint { color: var(--sub); font-size: 13px; }
 .status { font: 400 12px/1.4 var(--mono); color: var(--sub); min-height: 1.4em; }
+/* A/B：同じ場面の2案を並べて選ぶ */
+.ab { display: grid; gap: 12px; }
+.abcard { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 16px; display: grid; gap: 12px; }
+.abcard h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .pair { grid-template-columns: 1fr; } }
+.opt { display: grid; gap: 8px; align-content: start; }
+.opt video { border: 1px solid var(--line); border-radius: 4px; }
+.opt .lbl { font: 900 16px/1.3 var(--jp); }
+.opt .lbl b { font: 600 12px/1 var(--mono); color: var(--sub); margin-right: 8px; letter-spacing: 0.1em; }
+.opt .desc { color: var(--sub); font-size: 13px; }
+.picks .chip[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: #0f0f10; }
+.changes { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.changes li { color: var(--sub); font-size: 14px; }
+.changes li b { font: 600 12px/1 var(--mono); color: var(--fg); margin-right: 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -90,6 +105,9 @@ section > h3 { margin: 0 0 8px; font: 600 12px/1.4 var(--mono); color: var(--sub
     <div class="row"><button class="btn" type="button" id="cancel">やめる</button><button class="btn primary" type="submit">記録する</button></div>
   </form>
   <div class="status" id="status" role="status"></div>
+
+  <section id="abSec" hidden><h3>どっちがいい？（A/B）</h3><div class="ab" id="ab"></div></section>
+  <section id="chSec" hidden><h3>前の版から変えたところ</h3><ul class="changes" id="changes"></ul></section>
 
   <div class="cols">
     <section><h3>あなたの反応</h3><div class="list" id="reactions"><p class="hint">まだありません。再生して「おっ」「ん？」を押してみてください。</p></div></section>
@@ -213,6 +231,92 @@ function renderCritiques() {
   }
 }
 
+function renderChanges() {
+  const list = cfg?.changes ?? [];
+  $('chSec').hidden = !list.length;
+  const ul = $('changes');
+  ul.textContent = '';
+  for (const c of list) {
+    const li = document.createElement('li');
+    const b = document.createElement('b');
+    b.textContent = c.cut;
+    li.append(b, c.text);
+    ul.appendChild(li);
+  }
+}
+
+// A/B：config.ab = [{id, title, start, end, a:{label, desc, video}, b:{...}}]、選択は picks/<version>-<id>
+let picks = {}, abKey = '';
+function abVideo(src, start, end) {
+  const v = document.createElement('video');
+  v.controls = true; v.playsInline = true; v.muted = true; v.preload = 'auto';
+  v.src = `/_blob/${src}#t=${start}`;
+  // その場面だけをくり返す
+  v.addEventListener('timeupdate', () => { if (v.currentTime >= end || v.currentTime < start - 0.5) v.currentTime = start; });
+  return v;
+}
+function renderAB() {
+  const list = cfg?.ab ?? [];
+  $('abSec').hidden = !list.length;
+  const key = JSON.stringify(list);
+  const box = $('ab');
+  if (key !== abKey) {   // 動画は作り直さない（選択が変わっただけなら押下状態だけ更新）
+    abKey = key;
+    box.textContent = '';
+    for (const q of list) {
+      const card = document.createElement('div');
+      card.className = 'abcard';
+      card.dataset.id = q.id;
+      const h = document.createElement('h2');
+      h.textContent = `${q.id} ${q.title}`;
+      const pair = document.createElement('div');
+      pair.className = 'pair';
+      const vids = [];
+      for (const k of ['a', 'b']) {
+        const o = q[k];
+        const opt = document.createElement('div');
+        opt.className = 'opt';
+        const v = abVideo(o.video, q.start, q.end);
+        vids.push(v);
+        const lbl = document.createElement('div');
+        lbl.className = 'lbl';
+        const tag = document.createElement('b');
+        tag.textContent = k.toUpperCase();
+        lbl.append(tag, o.label);
+        const d = document.createElement('div');
+        d.className = 'desc';
+        d.textContent = o.desc;
+        opt.append(v, lbl, d);
+        pair.appendChild(opt);
+      }
+      const row = document.createElement('div');
+      row.className = 'chips picks';
+      const both = document.createElement('button');
+      both.type = 'button'; both.className = 'btn'; both.textContent = '2つ同時に再生';
+      both.onclick = () => vids.forEach((v) => { v.currentTime = q.start; v.play().catch(() => {}); });
+      row.appendChild(both);
+      for (const [v, label] of [['a', 'Aがいい'], ['b', 'Bがいい'], ['neither', 'どっちも違う']]) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'chip'; b.dataset.v = v; b.textContent = label;
+        b.disabled = !canWrite;
+        b.onclick = async () => {
+          const id = `${cfg.version}-${q.id}`;
+          const next = picks[id]?.choice === v ? null : v;
+          try { await db.doc(`picks/${id}`).set({ version: cfg.version, ab: q.id, choice: next, by: me ?? null, at: new Date().toISOString() }); status('選択を記録しました'); }
+          catch (e) { status('保存できませんでした'); }
+        };
+        row.appendChild(b);
+      }
+      card.append(h, pair, row);
+      box.appendChild(card);
+    }
+  }
+  for (const card of box.children) {
+    const choice = picks[`${cfg.version}-${card.dataset.id}`]?.choice;
+    for (const b of card.querySelectorAll('.picks .chip')) b.setAttribute('aria-pressed', String(choice === b.dataset.v));
+  }
+}
+
 function openSheet(kind) {
   if (!cfg || !video) return;
   video.pause();
@@ -295,6 +399,8 @@ function mountVideo() {
     cfg = s.exists ? s.data() : null;
     $('ver').textContent = cfg ? `${cfg.version} · ${cfg.duration}s · ${cfg.bpm} BPM` : 'waiting';
     mountVideo();
+    renderChanges();
+    renderAB();
     renderTimeline();
     renderReactions();
     renderCritiques();
@@ -303,6 +409,10 @@ function mountVideo() {
     reactions = s.docs.map((d) => ({ ...d.data(), _id: d.id }));
     renderTimeline();
     renderReactions();
+  });
+  db.collection('picks').onSnapshot((s) => {
+    picks = Object.fromEntries(s.docs.map((d) => [d.id, d.data()]));
+    if (cfg) renderAB();
   });
   db.collection('critiques').onSnapshot((s) => {
     critiques = s.docs.map((d) => ({ ...d.data(), _id: d.id }));

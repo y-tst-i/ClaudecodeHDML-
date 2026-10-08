@@ -12,8 +12,12 @@ const stills = process.argv.includes('--stills');
 // --page mako/ のように別の作品を書き出せる（出力は out/<名前>.mp4）
 const pi = process.argv.indexOf('--page');
 const pagePath = pi > 0 ? process.argv[pi + 1] : '';
-const outName = pagePath ? pagePath.replace(/\W+/g, '') : 'showreel';
-const server = await createServer({ server: { port: 5199 }, logLevel: 'error' });
+// --query 'c3=b' でページに条件を渡し、--name で出力名を変える
+const qi = process.argv.indexOf('--query');
+const extraQuery = qi > 0 ? '&' + process.argv[qi + 1] : '';
+const ni = process.argv.indexOf('--name');
+const outName = ni > 0 ? process.argv[ni + 1] : pagePath ? pagePath.replace(/\W+/g, '') : 'showreel';
+const server = await createServer({ server: { port: Number(process.env.PORT ?? 5199) }, logLevel: 'error' });
 await server.listen();
 
 const browser = await chromium.launch({
@@ -22,7 +26,7 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('pageerror', (e) => console.error(e));
-await page.goto(`http://localhost:5199/${pagePath}?mode=render`);
+await page.goto(`http://localhost:${server.config.server.port}/${pagePath}?mode=render${extraQuery}`);
 await page.waitForFunction(() => window.__showreel);
 const cfg = await page.evaluate(() => ({ fps: window.__showreel.fps, duration: window.__showreel.duration }));
 const grab = async (t) => Buffer.from((await page.evaluate((t) => window.__showreel.seek(t), t)).split(',')[1], 'base64');
