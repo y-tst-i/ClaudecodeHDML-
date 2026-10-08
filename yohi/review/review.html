@@ -1,0 +1,312 @@
+<title>Yohi Film Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* 試写室：暗い部屋でスクリーンを見る。反応は2色（良い＝ミント／引っかかる＝オレンジ）だけ */
+:root {
+  --bg: #0f0f10; --panel: #18181a; --line: #2a2a2e; --fg: #ece9e3; --sub: #9a9690;
+  --good: #7fe0b6; --huh: #ff6a2b; --chip: #232327;
+  --jp: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 400 15px/1.6 var(--jp); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 64px; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { margin: 0; font-weight: 900; font-size: 22px; letter-spacing: 0.02em; }
+.meta { font: 400 12px/1.4 var(--mono); color: var(--sub); letter-spacing: 0.06em; text-transform: uppercase; }
+.screen { background: #000; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+.empty { aspect-ratio: 16 / 9; display: grid; place-items: center; text-align: center; color: var(--sub); padding: 24px; }
+
+/* タイムライン：カットの区切りと、押した反応の位置 */
+.timeline { position: relative; height: 56px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; cursor: pointer; user-select: none; }
+.cut { position: absolute; top: 0; bottom: 0; border-right: 1px solid var(--line); padding: 6px 8px; font: 600 11px/1.2 var(--mono); color: var(--sub); overflow: hidden; white-space: nowrap; }
+.cut:last-child { border-right: 0; }
+.head { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--fg); pointer-events: none; }
+.pin { position: absolute; bottom: 8px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; border: 2px solid var(--bg); }
+.pin.good { background: var(--good); } .pin.huh { background: var(--huh); }
+
+/* 反応ボタン */
+.react { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.big { appearance: none; border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 4px; padding: 18px 12px; font: 900 22px/1 var(--jp); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px; transition: background-color .15s, border-color .15s; }
+.big small { font: 400 12px/1 var(--mono); color: var(--sub); }
+.big.good:hover, .big.good:focus-visible { border-color: var(--good); }
+.big.huh:hover, .big.huh:focus-visible { border-color: var(--huh); }
+.big:focus-visible, .chip:focus-visible, button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+
+/* タグを選ぶシート */
+.sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 16px; display: grid; gap: 12px; }
+.sheet h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { appearance: none; border: 1px solid var(--line); background: var(--chip); color: var(--fg); border-radius: 999px; padding: 6px 14px; font: 400 14px/1.4 var(--jp); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+input[type=text] { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font: 400 15px/1.4 var(--jp); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.btn { appearance: none; border: 1px solid var(--line); background: transparent; color: var(--fg); border-radius: 4px; padding: 8px 16px; font: 700 14px/1 var(--jp); cursor: pointer; }
+.btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+/* 下段：反応の一覧と、AIの批評 */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+section > h3 { margin: 0 0 8px; font: 600 12px/1.4 var(--mono); color: var(--sub); letter-spacing: 0.1em; text-transform: uppercase; }
+.list { display: grid; gap: 8px; min-width: 0; }
+.item { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: start; }
+.item .tc { font: 600 12px/1.6 var(--mono); color: var(--sub); cursor: pointer; font-variant-numeric: tabular-nums; }
+.item .body { min-width: 0; overflow-wrap: anywhere; }
+.item .x { appearance: none; border: 0; background: none; color: var(--sub); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px; }
+.tagline { color: var(--sub); font-size: 13px; }
+.crit { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 12px; display: grid; gap: 8px; }
+.crit .src { font: 600 11px/1 var(--mono); letter-spacing: 0.1em; color: var(--sub); text-transform: uppercase; }
+.crit .stance { display: flex; gap: 8px; }
+.stance .chip[data-v="agree"][aria-pressed="true"] { background: var(--good); border-color: var(--good); color: #0f0f10; }
+.stance .chip[data-v="disagree"][aria-pressed="true"] { background: var(--huh); border-color: var(--huh); color: #0f0f10; }
+.hint { color: var(--sub); font-size: 13px; }
+.status { font: 400 12px/1.4 var(--mono); color: var(--sub); min-height: 1.4em; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>YOHI IWAKIRI — 試写室</h1>
+    <div class="meta" id="ver">loading</div>
+  </header>
+
+  <div class="screen" id="screen"><div class="empty" id="empty">映像を準備しています。少し待ってから開き直してください。</div></div>
+  <div class="timeline" id="timeline" aria-label="タイムライン（押すとその位置へ移動）"></div>
+
+  <div class="react">
+    <button class="big good" id="goodBtn" type="button"><span class="dot" style="background:var(--good)"></span>おっ<small>良い・J</small></button>
+    <button class="big huh" id="huhBtn" type="button"><span class="dot" style="background:var(--huh)"></span>ん？<small>引っかかる・K</small></button>
+  </div>
+  <p class="hint">見ながら、心が動いた瞬間に押すだけでOK。言葉は下のボタンから選べます。押した内容は Claude がそのまま読みます。</p>
+
+  <form class="sheet" id="sheet" hidden>
+    <h2 id="sheetTitle"></h2>
+    <div class="chips" id="chips"></div>
+    <input type="text" id="note" placeholder="ひとこと（なくてもOK）例：FunTechのステッカーみたいにしたい" autocomplete="off">
+    <div class="row"><button class="btn" type="button" id="cancel">やめる</button><button class="btn primary" type="submit">記録する</button></div>
+  </form>
+  <div class="status" id="status" role="status"></div>
+
+  <div class="cols">
+    <section><h3>あなたの反応</h3><div class="list" id="reactions"><p class="hint">まだありません。再生して「おっ」「ん？」を押してみてください。</p></div></section>
+    <section><h3>AIの批評（賛成・反対を選ぶ）</h3><div class="list" id="critiques"><p class="hint">Claude と GPT の批評がここに並びます。</p></div></section>
+  </div>
+</div>
+
+<script>
+const TAGS = {
+  good: ['かっこいい', '気持ちいい', 'テンポがいい', '質感がいい', '驚いた', 'もっと見たい', '好き'],
+  huh: ['遅い', '速い', '長い', '短い', '地味', 'うるさい', 'ごちゃごちゃ', '読めない', 'わかりにくい', '安っぽい', 'よくある感じ', '音がほしい', 'なんか違う'],
+};
+const $ = (id) => document.getElementById(id);
+const fmt = (t) => `${String(Math.floor(t)).padStart(2, '0')}.${String(Math.floor((t % 1) * 10))}s`;
+let db = null, me = null, cfg = null, video = null, pending = null, reactions = [], critiques = [], canWrite = true;
+
+function cutAt(t) { return cfg?.cuts?.find((c) => t >= c.start && t < c.end) ?? cfg?.cuts?.[cfg.cuts.length - 1]; }
+function status(msg) { $('status').textContent = msg; }
+
+function renderTimeline() {
+  const tl = $('timeline');
+  tl.textContent = '';
+  if (!cfg) return;
+  const D = cfg.duration;
+  for (const c of cfg.cuts) {
+    const el = document.createElement('div');
+    el.className = 'cut';
+    el.style.left = `${(c.start / D) * 100}%`;
+    el.style.width = `${((c.end - c.start) / D) * 100}%`;
+    el.textContent = `${c.id} ${c.name}`;
+    tl.appendChild(el);
+  }
+  for (const r of reactions.filter((r) => r.version === cfg.version)) {
+    const p = document.createElement('div');
+    p.className = `pin ${r.kind}`;
+    p.style.left = `${(r.t / D) * 100}%`;
+    p.title = `${fmt(r.t)} ${(r.tags || []).join('・')}`;
+    tl.appendChild(p);
+  }
+  const head = document.createElement('div');
+  head.className = 'head';
+  head.id = 'head';
+  tl.appendChild(head);
+  moveHead();
+}
+function moveHead() {
+  const h = $('head');
+  if (h && video && cfg) h.style.left = `${(video.currentTime / cfg.duration) * 100}%`;
+}
+
+function renderReactions() {
+  const box = $('reactions');
+  const mine = reactions.filter((r) => r.version === cfg?.version).sort((a, b) => a.t - b.t);
+  box.textContent = '';
+  if (!mine.length) {
+    box.innerHTML = '<p class="hint">まだありません。再生して「おっ」「ん？」を押してみてください。</p>';
+    return;
+  }
+  for (const r of mine) {
+    const it = document.createElement('div');
+    it.className = 'item';
+    const tc = document.createElement('span');
+    tc.className = 'tc';
+    tc.textContent = `${fmt(r.t)}`;
+    tc.title = 'この位置へ';
+    tc.onclick = () => { if (video) { video.currentTime = r.t; video.pause(); } };
+    const body = document.createElement('div');
+    body.className = 'body';
+    const head = document.createElement('div');
+    head.innerHTML = `<span class="dot" style="display:inline-block;margin-right:8px;background:var(--${r.kind})"></span>`;
+    head.append(`${r.cut} ${r.kind === 'good' ? 'おっ' : 'ん？'}`);
+    const tags = document.createElement('div');
+    tags.className = 'tagline';
+    tags.textContent = [...(r.tags || []), r.note].filter(Boolean).join('・') || '（言葉なし）';
+    body.append(head, tags);
+    const x = document.createElement('button');
+    x.className = 'x';
+    x.type = 'button';
+    x.setAttribute('aria-label', '削除');
+    x.textContent = '×';
+    x.onclick = async () => { try { await db.doc(`reactions/${r._id}`).delete(); } catch (e) { status('削除できませんでした'); } };
+    it.append(tc, body, x);
+    box.appendChild(it);
+  }
+}
+
+function renderCritiques() {
+  const box = $('critiques');
+  const list = critiques.filter((c) => c.version === cfg?.version).sort((a, b) => (a.cut + a.source).localeCompare(b.cut + b.source));
+  box.textContent = '';
+  if (!list.length) {
+    box.innerHTML = '<p class="hint">Claude と GPT の批評がここに並びます。</p>';
+    return;
+  }
+  for (const c of list) {
+    const el = document.createElement('div');
+    el.className = 'crit';
+    const src = document.createElement('div');
+    src.className = 'src';
+    src.textContent = `${c.cut} — ${c.source}`;
+    const txt = document.createElement('div');
+    txt.textContent = c.text;
+    const st = document.createElement('div');
+    st.className = 'stance';
+    for (const [v, label] of [['agree', '賛成'], ['disagree', '反対']]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.dataset.v = v;
+      b.textContent = label;
+      b.setAttribute('aria-pressed', String(c.stance === v));
+      b.disabled = !canWrite;
+      b.onclick = async () => {
+        const next = c.stance === v ? null : v;
+        try { await db.doc(`critiques/${c._id}`).update({ stance: next }); } catch (e) { status('保存できませんでした'); }
+      };
+      st.appendChild(b);
+    }
+    el.append(src, txt, st);
+    box.appendChild(el);
+  }
+}
+
+function openSheet(kind) {
+  if (!cfg || !video) return;
+  video.pause();
+  const t = video.currentTime;
+  pending = { kind, t, tags: new Set() };
+  const c = cutAt(t);
+  $('sheetTitle').textContent = `${fmt(t)}（${c?.id ?? ''} ${c?.name ?? ''}）— ${kind === 'good' ? 'おっ、どこが良かった？' : 'ん？、どう引っかかった？'}`;
+  const chips = $('chips');
+  chips.textContent = '';
+  for (const tag of TAGS[kind]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = tag;
+    b.setAttribute('aria-pressed', 'false');
+    b.onclick = () => {
+      const on = !pending.tags.has(tag);
+      on ? pending.tags.add(tag) : pending.tags.delete(tag);
+      b.setAttribute('aria-pressed', String(on));
+    };
+    chips.appendChild(b);
+  }
+  $('note').value = '';
+  $('sheet').hidden = false;
+  chips.firstChild?.focus();
+}
+function closeSheet() { $('sheet').hidden = true; pending = null; }
+
+$('sheet').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!pending || !db) return;
+  const c = cutAt(pending.t);
+  const doc = { version: cfg.version, t: Math.round(pending.t * 10) / 10, cut: c?.id ?? '', kind: pending.kind, tags: [...pending.tags], note: $('note').value.trim(), by: me ?? null, at: new Date().toISOString() };
+  closeSheet();
+  try {
+    await db.collection('reactions').add(doc);
+    status('記録しました');
+    video?.play().catch(() => {});
+  } catch (err) {
+    status(err?.code === 'invalid_argument' ? 'この画面からは記録できません（閲覧のみの権限です）' : '記録できませんでした。もう一度押してください');
+  }
+});
+$('cancel').onclick = () => { closeSheet(); video?.play().catch(() => {}); };
+$('goodBtn').onclick = () => openSheet('good');
+$('huhBtn').onclick = () => openSheet('huh');
+$('timeline').addEventListener('click', (e) => {
+  if (!video || !cfg) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  video.currentTime = ((e.clientX - r.left) / r.width) * cfg.duration;
+});
+addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'j' || e.key === 'J') openSheet('good');
+  if (e.key === 'k' || e.key === 'K') openSheet('huh');
+});
+
+function mountVideo() {
+  if (!cfg?.video) return;
+  if (video && video.dataset.src === cfg.video) return;
+  const v = document.createElement('video');
+  v.controls = true;
+  v.playsInline = true;
+  v.preload = 'auto';
+  v.src = `/_blob/${cfg.video}`;
+  v.dataset.src = cfg.video;
+  v.addEventListener('timeupdate', moveHead);
+  $('screen').textContent = '';
+  $('screen').appendChild(v);
+  video = v;
+}
+
+(async () => {
+  db = await claude.use('db');
+  const user = await claude.use('user');
+  if (!db) { $('ver').textContent = 'offline'; status('この表示では反応を保存できません。claude.ai にサインインして開いてください。'); return; }
+  try { me = user ? await user.id() : null; } catch { me = null; }
+  try { const w = user ? await user.can('data.write') : null; if (w === false) canWrite = false; } catch {}
+  if (!canWrite) { $('goodBtn').disabled = $('huhBtn').disabled = true; status('閲覧のみの権限なので、反応は記録できません。'); }
+  db.doc('config/current').onSnapshot((s) => {
+    cfg = s.exists ? s.data() : null;
+    $('ver').textContent = cfg ? `${cfg.version} · ${cfg.duration}s · ${cfg.bpm} BPM` : 'waiting';
+    mountVideo();
+    renderTimeline();
+    renderReactions();
+    renderCritiques();
+  });
+  db.collection('reactions').onSnapshot((s) => {
+    reactions = s.docs.map((d) => ({ ...d.data(), _id: d.id }));
+    renderTimeline();
+    renderReactions();
+  });
+  db.collection('critiques').onSnapshot((s) => {
+    critiques = s.docs.map((d) => ({ ...d.data(), _id: d.id }));
+    renderCritiques();
+  });
+})();
+</script>
