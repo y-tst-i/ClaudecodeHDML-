@@ -47,7 +47,7 @@ vec3 cutSignal(vec2 uv, float t){
   vec2 u2 = cc + 0.5;
   vec3 glass = texture2D(tCrt, u2).rgb * 0.45;
   vec2 q = (u2 - 0.5) * vec2(ASP, 1.0);
-  vec2 lu = logoUV(q, vec2(0.0, 0.0), 0.52, 0.0);
+  vec2 lu = logoUV(q, vec2(0.0, -0.06), 0.52, 0.0);
   float band = floor(lu.y * 8.0);
   float start = 0.25 + (7.0 - band) * 0.25;   // 上の帯から順に、8分音符ごと
   float k = outBack(range(t, start, start + 0.3));
@@ -97,8 +97,10 @@ vec3 cutStreet(vec2 uv, float t){
     mist += logoA(tB, lu + vec2(cos(an), sin(an)) * 0.03);
   }
   mist = mist / 6.0 * sweep;
-  vec3 col = wall * (1.0 - mist * 0.35);
-  col = mix(col, INK + wall * 0.06, a * 0.96);
+  // 白っぽいスプレー（チョークのように少しかすれる）。壁の凹凸で、ところどころ薄く
+  vec3 paint = vec3(0.93, 0.91, 0.86) * (0.86 + 0.14 * vnoise(wu * 420.0));
+  vec3 col = wall * (1.0 + mist * 0.25);
+  col = mix(col, paint, a * (0.9 - 0.25 * smoothstep(0.55, 0.2, dot(wall, vec3(0.33)))));
   // ノズルの位置に、霧の明るい点
   return col;
 }
@@ -134,7 +136,7 @@ vec3 cutLockup(vec2 uv, float t){
   // D：上から落ちて止まる
   float dk = outBack(range(t, 0.0, 0.45));
   vec2 luD = logoUV(q, vec2(0.0, 0.16 + (1.0 - dk) * 0.6), 0.36, 0.0);
-  float aD = logoA(tD, luD) * step(luD.y, 0.97);
+  float aD = logoA(tD, luD) * step(0.3, luD.y); // マークだけ（下の名前は使わない）
   // 金属の D：筋目の明暗＋光の帯
   float lum = dot(texture2D(tMetal, uv * 1.7).rgb, vec3(0.33));
   vec3 dCol = vec3(0.86, 0.87, 0.9) * (0.65 + lum * 0.7) + vec3(0.6) * exp(-pow((uv.x - sweepX) * 8.0, 2.0));
@@ -144,7 +146,7 @@ vec3 cutLockup(vec2 uv, float t){
   vec2 luA2 = vec2(luA.x, (luA.y - 0.5) / max(sa, 0.001) + 0.5);
   float aA = logoA(tA, luA2) * step(0.001, sa);
   // B：斜めにオレンジで吹き付け
-  vec2 luB = logoUV(q, vec2(0.04, -0.03), 0.66, -0.16);
+  vec2 luB = logoUV(q, vec2(0.36, -0.33), 0.4, -0.14); // 右下にサインのように
   float bk = range(t, 0.9, 1.9);
   float aB = logoA(tB, luB) * sprayReveal(luB, bk);
   vec3 col = metal;
@@ -156,7 +158,7 @@ vec3 cutLockup(vec2 uv, float t){
 
 // ---------- C4 GLITCH：3つの顔が高速に入れ替わる ----------
 vec3 pickFace(vec2 uv, float slot){
-  float m = mod(slot, 3.0);
+  float m = floor(hash12(vec2(slot, 21.0)) * 3.0);
   if (m < 0.5) return cutSignal(uv, 2.99);
   if (m < 1.5) return cutStreet(uv, 2.99);
   return cutMode(uv, 2.99);
