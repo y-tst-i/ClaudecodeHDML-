@@ -1,4 +1,4 @@
-// YOHI IWAKIRI — 15秒のロゴ映像 v2。1枚のシェーダーで全カットを描く（時刻 t だけで画が決まる）。
+// YOHI IWAKIRI — 15秒のロゴ映像 v3。1枚のシェーダーで全カットを描く（時刻 t だけで画が決まる）。
 // 絵の質感は実写素材（Codex生成）、動き・合成・グリッチはコード。
 import { NOISE } from './noise.js';
 
@@ -8,7 +8,7 @@ export const DURATION = 15;
 export const frag = /* glsl */ `
 precision highp float;
 uniform sampler2D tA, tB, tD, tWall, tPaper, tGrain, tCrt, tMetal;
-uniform float uT, uC3, uC4; uniform vec2 uRes; // uC3/uC4: 0=A案 1=B案
+uniform float uT; uniform vec2 uRes;
 varying vec2 vUv;
 ${NOISE}
 const float ASP = 16.0 / 9.0;
@@ -47,16 +47,25 @@ vec3 cutSignal(vec2 uv, float t){
   vec2 u2 = cc + 0.5;
   vec3 glass = texture2D(tCrt, u2).rgb * 0.45;
   vec2 q = (u2 - 0.5) * vec2(ASP, 1.0);
-  vec2 lu = logoUV(q, vec2(0.0, -0.06), 0.52, 0.0);
+  // 2.0s（拍の頭）で電圧が跳ね上がる：ロゴが一瞬大きく、画面が揺れて白く焼ける
+  float hit = step(2.0, t) * exp(-(t - 2.0) * 7.0);
+  vec2 jolt = (vec2(hash12(vec2(floor(t * 30.0), 51.0)), hash12(vec2(floor(t * 30.0), 52.0))) - 0.5) * 0.03 * hit;
+  vec2 lu = logoUV(q + jolt, vec2(0.0, -0.06), 0.6 * (1.0 + 0.16 * hit), 0.0);
   float band = floor(lu.y * 8.0);
-  float start = 0.25 + (7.0 - band) * 0.25;   // 上の帯から順に、8分音符ごと
-  float k = outBack(range(t, start, start + 0.3));
+  float start = 0.2 + (7.0 - band) * 0.17;   // 上の帯から順に、16分音符くらいの速さで畳みかける
+  float k = outBack(range(t, start, start + 0.22));
   float dir = mod(band, 2.0) < 0.5 ? 1.0 : -1.0;
   vec2 lu2 = lu + vec2(dir * (1.0 - k) * 1.3, 0.0);
+  // 動いている帯は横に流れる（モーションブラー）
+  float blur = (1.0 - k) * 0.12;
+  float mb = 0.0;
+  for (int i = 0; i < 5; i++) mb += logoA(tD, lu2 + vec2(dir * blur * float(i) / 4.0, 0.0));
+  mb /= 5.0;
   float on1 = step(0.001, k);
   // ガラス越しの像：画面の端ほど RGB の電子ビームが揃わず（色がにじみ）、暗くなる
   float conv = cc.x * 0.012;
-  vec3 a3 = vec3(logoA(tD, lu2 + vec2(conv, 0.0)), logoA(tD, lu2), logoA(tD, lu2 - vec2(conv, 0.0))) * on1;
+  conv += hit * 0.02;
+  vec3 a3 = (k < 0.999 ? vec3(mb) : vec3(logoA(tD, lu2 + vec2(conv, 0.0)), logoA(tD, lu2), logoA(tD, lu2 - vec2(conv, 0.0)))) * on1;
   // 蛍光体の光：近いにじみと、遠いにじみの2重
   float glow = 0.0, bleed = 0.0;
   for (int i = 0; i < 8; i++) {
@@ -70,6 +79,10 @@ vec3 cutSignal(vec2 uv, float t){
   float flick = 0.92 + 0.08 * hash12(vec2(floor(t * 30.0), 3.0));
   float edgeFall = 1.0 - 0.45 * pow(abs(cc.x) * 2.0, 2.0);
   vec3 col = glass + (phos * a3 * 1.15 + phos * glow * 0.4 + vec3(0.35, 0.6, 0.45) * bleed * 0.35) * flick * edgeFall;
+  // 衝撃の光：全体が焼けて、ロゴの高さに横一文字の光の筋
+  col += phos * hit * (0.55 + 1.2 * exp(-abs(q.y + 0.06) * 18.0)) + phos * glow * hit * 1.5;
+  // その後は拍ごとに呼吸する
+  col *= 1.0 + 0.12 * step(2.0, t) * exp(-mod(t - 2.0, BEAT) * 8.0);
   // 走査線と、ゆっくり下りるロール帯
   col *= 0.82 + 0.18 * sin(u2.y * uRes.y * 3.14159);
   col += vec3(0.05, 0.07, 0.06) * smoothstep(0.08, 0.0, abs(fract(u2.y - t * 0.35) - 0.5));
@@ -121,6 +134,35 @@ vec3 cutStreet(vec2 uv, float t){
     drip = step(dd, grow);
   }
   float a = logoA(tB, lu) * sweep * drip;
+  // 描き終わり（2.0s）から、塗料が長く垂れていく。1本ごとに位置・長さ・速さが違う
+  float run = range(t, 1.95, 3.0);
+  float wet = 0.0;
+  float col60 = floor(lu.x * 60.0);
+  float hasDrip = step(0.72, hash12(vec2(col60, 7.0)));
+  float cx = (col60 + 0.3 + 0.4 * hash12(vec2(col60, 8.0))) / 60.0;
+  float dw = 0.0045 + 0.004 * hash12(vec2(col60, 9.0));
+  if (run > 0.0 && hasDrip > 0.5 && abs(lu.x - cx) < dw * 2.6 && lu.y > -0.3 && lu.y < 0.9 && logoA(tB, lu) < 0.5) {
+    float dy = 1.0;   // 真上の塗り（垂れの根元）までの距離
+    for (int i = 1; i <= 50; i++) {
+      float d = float(i) * 0.006;
+      if (dy > 0.99 && logoA(tB, vec2(cx, lu.y + d)) > 0.6) dy = d;
+    }
+    // 根元の位置を二分探索で細かく求める（粗いと先の玉がカクつく）
+    float lo = dy - 0.006, hi = dy;
+    for (int i = 0; i < 5; i++) {
+      float m = (lo + hi) * 0.5;
+      if (logoA(tB, vec2(cx, lu.y + m)) > 0.6) hi = m; else lo = m;
+    }
+    if (dy < 0.99) dy = hi;
+    float rnd = hash12(vec2(col60, 3.0));
+    float len = run * run * (0.07 + 0.2 * rnd) / (0.55 + 0.45 * rnd);
+    float x = abs(lu.x - cx);
+    float w = dw * mix(1.3, 0.75, dy / max(len, 0.001)) * (0.88 + 0.24 * vnoise(vec2(dy * 30.0, col60)));   // 根元は太く、先へ細く、少し揺らぐ            // 下へ行くほど少し細く
+    float line = smoothstep(len + 0.004, len - 0.004, dy) * smoothstep(w, w * 0.6, x);
+    float bead = smoothstep(dw * 1.9, dw * 1.5, length(vec2(x, (dy - len) / 1.5 + dw * 0.5)));   // 縦横比を補正して丸く   // 先の玉
+    wet = max(line, bead * step(0.02, len)) * step(dy, 0.99);
+  }
+  a = max(a, wet);
   // 塗料の厚み：線の芯は濃く、縁は薄く壁が透ける
   float core = 0.0, mist = 0.0;
   for (int i = 0; i < 8; i++) {
@@ -141,33 +183,13 @@ vec3 cutStreet(vec2 uv, float t){
   vec3 col = wall * (1.0 + mist * 0.3 + nozzle * 0.3);
   col = mix(col, paint, a * dens);
   col = mix(col, vec3(0.9, 0.89, 0.85), speck * 0.75);
+  col += vec3(0.1) * wet * (0.6 + 0.4 * sin(lu.y * 90.0 - t * 6.0)); // 濡れたつや
   return col;
 }
 
 // ---------- C3 MODE ----------
-// A案「表紙」：オレンジの紙に巨大な文字。拍ごとにハードカットで寄り → 最後にぐっと引いて全体
-vec3 cutModeA(vec2 uv, float t){
-  float beat = floor(t / BEAT);
-  vec2 q = (uv - 0.5) * vec2(ASP, 1.0);
-  vec3 paper = texture2D(tPaper, uv).rgb;
-  vec3 bg = ORANGE * (0.82 + 0.3 * dot(paper, vec3(0.33)));
-  vec2 c; float w;
-  float lt = t - beat * BEAT;
-  if (beat < 1.0) { c = vec2(1.1 - lt * 0.5, 0.05); w = 2.6; }          // 「YOHI」を大写しで右へ流す
-  else if (beat < 2.0) { c = vec2(-1.2 + lt * 0.5, -0.1); w = 2.9; }    // 「IWAKIRI」を逆方向へ
-  else if (beat < 3.0) { c = vec2(0.25, 0.3 - lt * 0.2); w = 4.2; }     // 文字の脚だけ、縦に
-  else {                                                                  // 引いて全体が見える
-    float k = outExpo(range(t, 1.5, 1.85));
-    c = vec2(0.0, 0.02); w = mix(2.2, 0.82, k) + (t - 1.5) * 0.02;
-  }
-  vec2 lu = logoUV(q, c, w, 0.0);
-  float a = logoA(tA, lu);
-  float grain = texture2D(tGrain, uv).r;
-  a *= 1.0 - grain * 0.35;
-  return mix(bg, INK, a * 0.97);
-}
-// B案「刷り」：紙が送られてきて、拍ごとにオレンジ版 → 黒版がガシャンと刷られ、最後に版がぴたっと揃う
-vec3 cutModeB(vec2 uv, float t){
+// 「刷り」（v2のA/BでB案に決定）：紙が送られてきて、拍ごとにオレンジ版 → 黒版がガシャンと刷られ、最後に版がぴたっと揃う
+vec3 cutMode(vec2 uv, float t){
   float feed = outExpo(range(t, 0.0, 0.4));
   float kick = 0.0; // 刷った瞬間の衝撃
   kick += (1.0 - range(t, 0.5, 0.62)) * step(0.5, t);
@@ -201,7 +223,6 @@ vec3 cutModeB(vec2 uv, float t){
   col *= step(0.0, pu.y) * 0.85 + 0.15;
   return col;
 }
-vec3 cutMode(vec2 uv, float t){ return uC3 < 0.5 ? cutModeA(uv, t) : cutModeB(uv, t); }
 
 // ---------- C5 LOCKUP：金属の上で D と A。最後に B をオレンジで吹き付ける ----------
 vec3 cutLockup(vec2 uv, float t){
@@ -239,8 +260,8 @@ vec3 pickFace(vec2 uv, float slot){
   if (m < 1.5) return cutStreet(uv, 2.99);
   return cutMode(uv, 2.99);
 }
-// B案「整えたグリッチ」：色ずれは赤とシアンの細い縁だけ。横ずれは画面の一部の帯だけ
-vec3 cutGlitchB(vec2 uv, float t){
+// 「整えたグリッチ」（v2のA/BでB案に決定）：色ずれは赤とシアンの細い縁だけ。横ずれは画面の一部の帯だけ
+vec3 cutGlitch(vec2 uv, float t){
   float slot = floor(t / 0.25);
   float h = hash12(vec2(slot, 4.0));
   float row = floor(uv.y * 24.0);
@@ -253,51 +274,6 @@ vec3 cutGlitchB(vec2 uv, float t){
   float fl = 1.0 - range(mod(t, BEAT), 0.0, 0.06);
   return mix(col, vec3(1.0), fl * 0.12);
 }
-// A案「ステッカー」：3つの顔がステッカーとして壁に叩きつけられ、拍ごとに積み重なる
-float sdBox(vec2 p, vec2 b){ vec2 d = abs(p) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
-vec3 cutGlitchA(vec2 uv, float t){
-  float slot = floor(t / 0.25);
-  float land = 1.0 - range(t - slot * 0.25, 0.0, 0.1);   // 着地の衝撃
-  vec2 shake = (vec2(hash12(vec2(slot, 31.0)), hash12(vec2(slot, 32.0))) - 0.5) * 0.02 * land * land;
-  vec2 u = uv + shake;
-  vec3 col = texture2D(tWall, u * 0.8 + 0.1).rgb * 0.45;
-  vec2 q = (u - 0.5) * vec2(ASP, 1.0);
-  for (int i = 4; i >= 0; i--) {
-    float j = slot - float(i);
-    if (j < 0.0) continue;
-    float tj = j * 0.25;
-    float m = floor(hash12(vec2(j, 21.0)) * 3.0);
-    bool last = j > 10.5;
-    vec2 c = last ? vec2(0.0) : (vec2(hash12(vec2(j, 41.0)), hash12(vec2(j, 42.0))) - 0.5) * vec2(0.8, 0.36);
-    float rot = last ? -0.04 : (hash12(vec2(j, 43.0)) - 0.5) * 0.5;
-    float w = last ? 0.62 : 0.36 + 0.12 * hash12(vec2(j, 44.0));
-    float s = 1.0 + 0.45 * (1.0 - outExpo(range(t, tj, tj + 0.07)));   // 上から叩きつける
-    w *= s;
-    vec2 d = q - c;
-    float sn = sin(rot), cs = cos(rot);
-    d = vec2(cs * d.x - sn * d.y, sn * d.x + cs * d.y);
-    vec2 hb = vec2(w, w / 1.5) * vec2(0.98, 0.78);
-    float sd = sdBox(d, hb - 0.02) - 0.02;
-    // 影（叩きつける前は遠く・ぼけて、貼りつくと近く・くっきり）
-    float lift = s - 1.0;
-    float sdS = sdBox(d - vec2(0.012, -0.018) * (1.0 + lift * 4.0), hb - 0.02) - 0.02;
-    col *= 1.0 - 0.55 * smoothstep(0.02 + lift * 0.1, -0.01, sdS);
-    float card = smoothstep(0.002, -0.002, sd);
-    vec2 lu = d / (vec2(w, w / 1.5) * 2.0) + 0.5;
-    vec3 face;
-    if (m < 0.5) face = mix(vec3(0.05), vec3(0.78, 1.0, 0.86), logoA(tD, lu));          // 黒地に緑の D
-    else if (m < 1.5) face = mix(ORANGE, vec3(0.97, 0.96, 0.93), logoA(tB, lu));        // オレンジ地に白い B
-    else face = mix(texture2D(tPaper, lu).rgb, INK, logoA(tA, lu));                      // 紙に黒い A
-    // 白いフチ（型抜き）と、表面のつや
-    face = mix(vec3(0.96, 0.95, 0.92), face, smoothstep(-0.012, -0.016, sd));
-    face += 0.12 * smoothstep(0.15, 0.0, abs(d.x * 0.6 + d.y - 0.1 + lift)) ;
-    col = mix(col, face, card);
-  }
-  // 拍の頭で軽く光る（v1 で好評だったテンポは残す）
-  float fl = 1.0 - range(mod(t, BEAT), 0.0, 0.06);
-  return mix(col, vec3(1.0), fl * 0.1);
-}
-vec3 cutGlitch(vec2 uv, float t){ return uC4 < 0.5 ? cutGlitchA(uv, t) : cutGlitchB(uv, t); }
 
 void main(){
   vec2 uv = vUv;
