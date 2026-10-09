@@ -62,7 +62,7 @@ export async function createAlley(renderer, env) {
     t.offset.set((k % 3) / 3, k < 3 ? 0.5 : 0);
     const size = 0.22 + rnd() * 0.12;
     const st = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshStandardMaterial({ map: t, transparent: true, alphaTest: 0.5, roughness: 0.4 }));
-    const spots = [[-1.95, 1.1], [-2.6, 0.8], [1.85, 0.9], [2.25, 0.62], [3.3, 1.0], [-1.6, 2.65], [1.6, 2.75], [-2.9, 2.0], [3.9, 2.4]];
+    const spots = [[-1.95, 1.1], [-2.6, 0.8], [1.85, 0.9], [2.25, 0.62], [3.3, 1.0], [-1.6, 2.65], [0.9, 2.85], [-2.9, 2.0], [3.9, 2.4]];
     st.position.set(spots[i][0], spots[i][1], -0.975);
     st.rotation.z = (rnd() - 0.5) * 0.6;
     scene.add(st);
@@ -79,7 +79,7 @@ export async function createAlley(renderer, env) {
   scene.add(paint);
   // 完成したタグ：オレンジのスプレー。左から右へ吹きつけるように現れ、垂れる
   const reveal = { value: 0 }, drip = { value: 0 };
-  const tagMat = new THREE.MeshStandardMaterial({ map: tex.logoB, color: 0xff481b, transparent: true, roughness: 0.5, emissive: 0xff481b, emissiveIntensity: 0.25 });
+  const tagMat = new THREE.MeshStandardMaterial({ map: tex.logoB, color: 0xff481b, transparent: true, roughness: 0.5, emissive: 0xff5a1f, emissiveIntensity: 0.9 });
   tagMat.onBeforeCompile = (sh) => {
     sh.uniforms.uReveal = reveal; sh.uniforms.uDrip = drip;
     sh.fragmentShader = 'uniform float uReveal, uDrip;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
@@ -104,8 +104,12 @@ export async function createAlley(renderer, env) {
   for (let i = 0; i < inLogo.length; i++) if (md[i * 4 + 3] > 100) { inLogo[i] = 1; logoCells++; }
 
   // ---------- 光：オレンジのナトリウム灯と、遠くのテレビの緑白い光 ----------
-  scene.add(new THREE.HemisphereLight(0x1a2228, 0x050505, 0.25));
-  const lamp = new THREE.PointLight(0xff7a3a, 22, 12, 1.6);
+  scene.add(new THREE.HemisphereLight(0x2a3a44, 0x080808, 0.5));
+  // 壁が読めるだけの、弱く冷たい正面光（遠くのテレビの光が回り込んでいる想定）
+  const fill = new THREE.DirectionalLight(0x9fc8c0, 0.35);
+  fill.position.set(-2, 3, 6);
+  scene.add(fill);
+  const lamp = new THREE.PointLight(0xffa868, 40, 14, 1.25);
   lamp.position.set(2.4, 3.6, 0.4);
   scene.add(lamp);
   const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 20, 12), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffb070).multiplyScalar(4) }));
@@ -125,10 +129,17 @@ export async function createAlley(renderer, env) {
   mon.group.traverse((o) => { if (o.material?.envMapIntensity !== undefined) o.material.envMapIntensity *= 0.35; });
   const holder = new THREE.Group();
   holder.add(mon.group);
-  holder.scale.setScalar(0.8);
-  holder.position.set(-1.25, 0, 0.7);
-  holder.rotation.y = 0.35;
+  holder.scale.setScalar(0.95);
+  holder.position.set(-1.75, 0, -0.25);
+  holder.rotation.y = 1.05;   // 横向きで壁（スプレー）を見ている
   scene.add(holder);
+  // 後ろからの細い光で、暗がりでも黒い体の輪郭が分かるように（でないと目と胸のしまだけが浮いて、顔に見える）
+  const rim = new THREE.PointLight(0xc8ffe0, 2.2, 1.5, 1.6);
+  rim.position.set(-2.25, 1.15, -0.45);
+  scene.add(rim);
+  const rim2 = new THREE.PointLight(0xffa868, 2.5, 2.2, 1.5);
+  rim2.position.set(-1.0, 0.9, -0.6);
+  scene.add(rim2);
 
   const camera = new THREE.PerspectiveCamera(38, 16 / 9, 0.1, 60);
   const raycaster = new THREE.Raycaster();
@@ -141,16 +152,17 @@ export async function createAlley(renderer, env) {
   function stamp(i) {
     const p = st.points[i];
     const r = mulberry32(1000 + i);
-    const x = p.u * canvas.width, y = (1 - p.v) * canvas.height, R = 38;
+    const x = p.u * canvas.width, y = (1 - p.v) * canvas.height, R = 24;
     const grad = g2.createRadialGradient(x, y, 0, x, y, R);
-    grad.addColorStop(0, 'rgba(232,255,240,0.55)');
-    grad.addColorStop(0.6, 'rgba(232,255,240,0.18)');
+    grad.addColorStop(0, 'rgba(236,255,244,0.85)');
+    grad.addColorStop(0.45, 'rgba(236,255,244,0.45)');
+    grad.addColorStop(0.75, 'rgba(236,255,244,0.08)');
     grad.addColorStop(1, 'rgba(232,255,240,0)');
     g2.fillStyle = grad;
     g2.beginPath(); g2.arc(x, y, R, 0, Math.PI * 2); g2.fill();
     g2.fillStyle = 'rgba(240,255,245,0.85)';
-    for (let k = 0; k < 26; k++) {
-      const a = r() * Math.PI * 2, d = R * (0.5 + r() * 0.9), s = 0.6 + r() * 1.6;
+    for (let k = 0; k < 34; k++) {
+      const a = r() * Math.PI * 2, d = R * (0.4 + r() * 1.4), s = 0.6 + r() * 1.8;
       g2.fillRect(x + Math.cos(a) * d, y + Math.sin(a) * d, s, s);
     }
     // 升目に「塗れた」を記録
@@ -195,15 +207,15 @@ export async function createAlley(renderer, env) {
     // ノズルの光（吹いている所がぼんやり光る）
     if (st.nozzle && st.holding && st.completeAt === null) { nozzleLight.position.copy(st.nozzle).add(new THREE.Vector3(0, 0, 0.3)); nozzleLight.intensity = 0.6 + st.speed * 2; }
     else nozzleLight.intensity *= 0.8;
-    lamp.intensity = 22 * (0.94 + 0.06 * Math.sin(t * 50) * (Math.sin(t * 0.7) > 0.95 ? 1 : 0.1));   // ときどきジジッとちらつく
+    lamp.intensity = 40 * (0.94 + 0.06 * Math.sin(t * 50) * (Math.sin(t * 0.7) > 0.95 ? 1 : 0.1));   // ときどきジジッとちらつく
     // けもの：ノズルを目で追う。完成で跳ねる
-    const lk = st.nozzle ? { x: THREE.MathUtils.clamp((st.nozzle.x - holder.position.x) * 0.6, -1, 1), y: THREE.MathUtils.clamp((st.nozzle.y - 1.0) * 0.8, -1, 1) } : look;
+    const lk = st.nozzle ? { x: THREE.MathUtils.clamp((st.nozzle.x - holder.position.x) * 0.25 - 0.3, -1, 1), y: THREE.MathUtils.clamp((st.nozzle.y - 1.0) * 0.8, -1, 1) } : look;
     mon.update({ t, power: st.completeAt === null ? Math.min(0.6, st.coverage / COMPLETE_AT * 0.6) : 1, sinceImpact: since, look: lk });
     // カメラ：入ってきた瞬間は壁に近い位置から引く。マウスで少し覗き込む
     const intro = Math.min(1, (t - st.enterAt) / 0.9), e = 1 - (1 - intro) ** 3;
     const shake = hit * 0.05;
-    camera.position.set(look.x * 0.3 + Math.sin(t * 57) * shake, 1.35 + look.y * 0.15 + Math.cos(t * 49) * shake, 2.2 + 2.3 * e);
-    camera.lookAt(look.x * 0.1, 1.35, -1);
+    camera.position.set(look.x * 0.3 + Math.sin(t * 57) * shake, 1.3 + look.y * 0.15 + Math.cos(t * 49) * shake, 2.2 + 2.6 * e);
+    camera.lookAt(look.x * 0.1, 1.0, -1);
     return { hit: Math.max(hit, (1 - intro) * 0.5), power: Math.min(1, st.coverage / COMPLETE_AT) * 0.5 };
   }
 

@@ -88,6 +88,8 @@ const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimation
 const shots = [];
 let mode = opt('mode', 'auto');
 let page = await open(opt('size') ? parseSize(opt('size')) : { width: 1280, height: 720 });
+// 重いページは読み込み後も準備（素材の読み込み・シェーダーの組み立て）に時間がかかる。__seek / __slides が出るまで少し待つ
+await page.waitForFunction(() => typeof window.__seek === 'function' || window.__slides, null, { timeout: 120000 }).catch(() => {});
 if (mode === 'auto') {
   mode = await page.evaluate(() => (typeof window.__seek === 'function' ? 'time' : window.__slides ? 'slides' : 'page'));
 }
