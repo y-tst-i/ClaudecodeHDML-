@@ -26,11 +26,12 @@ const shot = (name) => page.screenshot({ path: `out/yohi-exp/smoke/${name}.png` 
 await page.mouse.move(640, 360);
 await page.mouse.down();
 await until(() => window.__exp.state().lt > 1.0);
-await shot('c1-holding');
 await page.mouse.up();
-const back = (await state()).lt;
+const atRelease = await state();
 await page.waitForTimeout(600);
-if ((await state()).lt >= back) throw new Error('C1: 離しても戻らない');
+const afterRelease = await state();
+if (afterRelease.lt >= atRelease.lt) throw new Error(`C1: 離しても戻らない ${JSON.stringify({ atRelease, afterRelease })}`);
+await shot('c1-released');
 await page.mouse.down();
 await until(() => window.__exp.state().auto);
 await page.mouse.up();
