@@ -48,3 +48,11 @@
 | C3 | A/B で **B「刷り」** | B案に一本化 |
 | C4 | A/B で **B「整えたグリッチ」**（Aのステッカーは「わかりにくい」） | B案に一本化 |
 | C5 | — | 変更なし |
+
+---
+
+# v4（音を付けた）
+
+- 映像は v3 のまま。音はすべてコードで合成：`node yohi/audio/build.mjs` → `yohi/assets/audio/score.wav`（48kHz・ステレオ、-14.6 LUFS / ピーク -1.7 dBTP）
+- 映像との合体：`ffmpeg -i out/yohi-v3.mp4 -i yohi/assets/audio/score.wav -map 0:v -map 1:a -c:v copy -c:a aac -shortest out/yohi-v3-sound.mp4`
+- 参考：FunTech は音を `gen/audio/` に68個の m4a（BGMループ9本＋効果音）として置き、Web Audio で16分音符に揃えて鳴らしている。こちらも同じ「ファイルに書き出して、コードで鳴らす」形にして、次の体験型サイトで使い回す。
