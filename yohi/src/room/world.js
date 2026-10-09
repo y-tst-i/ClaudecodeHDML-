@@ -271,7 +271,7 @@ export async function createWorld(renderer, files) {
     // 画質の段階：2（LOW）では床の映り込み（場面をもう1回描く重い処理）を止める
     setQuality(q) { wet.visible = q < 2; },
     // 絵の状態を決める。power 0..1（溜まり具合）、sinceImpact（衝撃からの秒。衝撃前は負）
-    update({ t, power, sinceImpact }) {
+    update({ t, power, sinceImpact, bite = false }) {
       const impacted = sinceImpact >= 0;
       const hit = impacted ? Math.exp(-sinceImpact * 5) : 0;
       // 主役の画面の中身：衝撃までは溜まり具合で帯が組み上がる。衝撃後は映像の 2.0〜2.95 秒
@@ -280,7 +280,8 @@ export async function createWorld(renderer, files) {
       let lit = 0;
       for (const tv of tvs) {
         const u = tv.mat.uniforms;
-        const p = impacted ? 1 : power;
+        // bite：けものが光を食べている間は、主役以外は点かない（くしゃみで一斉に点く）
+        const p = impacted ? 1 : bite && !tv.hero ? 0 : power;
         const on = clamp01((p - tv.threshold) / 0.035);
         // 点いた直後は砂嵐 → 映像へ。衝撃後は拍ごとに1台ずつ砂嵐が走る
         let stat = 1 - clamp01((p - tv.threshold - 0.035) / 0.12);
@@ -295,7 +296,7 @@ export async function createWorld(renderer, files) {
         u.uOn.value = on;
         u.uStatic.value = stat;
         u.uFlash.value = hit * 0.45;
-        u.uGain.value = (tv.hero ? 1.0 : 0.8) * flick * (1 + hit * 0.4);
+        u.uGain.value = (tv.hero ? 1.0 : 0.8) * flick * (1 + hit * 0.4) * (bite && tv.hero && !impacted ? 1 - power * 0.7 : 1);
         lit += on * (tv.hero ? 3 : 1);
       }
       const avg = lit / (tvs.length + 2);

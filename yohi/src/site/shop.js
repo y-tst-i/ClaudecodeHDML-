@@ -8,7 +8,9 @@ import { sfx } from '../audio.js';
 // 1回目＝オレンジの版、2回目＝黒の版（ずれている）、3回目＝ガシャンと版が揃う → 機械が全開で回り、刷り上がりが一斉に舞う。
 // 絵は state（t, 押した時刻の一覧）だけで決まる。舞う紙はすべて1つの式で動かす。
 const PASS = 0.9;          // 1回刷るのにかかる秒（機械に入る → 刷る → カメラの前にせり上がって見せる）
-const BURST_DELAY = PASS + 0.7;   // 3回目のあと、揃ったポスターを見せてから全開に
+// 3回目のあと（G5「紙から出る」）：ポスターが立ち上がる → 紙のけものが盛り上がる → 破れて飛び出し、床に着地 → 全開
+const EMERGE = { stand: 0.0, bulge: 0.45, tear: 1.35, land: 2.05 };   // 3回目の刷り上がり（presses[2] + PASS）からの秒
+const BURST_DELAY = PASS + 2.5;
 const N_FLY = 80;          // 舞う紙の枚数
 
 export async function createShop(renderer, env) {
@@ -80,11 +82,22 @@ export async function createShop(renderer, env) {
 
   // ---------- 刷られる紙：けもののポスターを、オレンジの版 → 黒の版（ずれる）→ 揃う、の順に刷る ----------
   // 元のポスター画像から「オレンジの所」「黒い所」を色で取り出して、版ごとに紙へ乗せる
-  const ink = { uO: { value: 0 }, uK: { value: 0 }, uOff: { value: new THREE.Vector2() } };
+  const ink = { uO: { value: 0 }, uK: { value: 0 }, uOff: { value: new THREE.Vector2() }, uBulge: { value: 0 }, uTear: { value: 0 } };
   const sheetMat = new THREE.MeshStandardMaterial({ map: tex.paper, roughness: 1.0, color: 0xc4c0b8 });
   sheetMat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, ink, { uPrint: { value: tex.printA }, uGrain: { value: tex.grain } });
-    sh.fragmentShader = 'uniform float uO, uK; uniform vec2 uOff; uniform sampler2D uPrint, uGrain;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+    // 盛り上がり：ポスターの「黒い所」（けものの体）を高さにして、紙を内側から押し出す
+    sh.vertexShader = 'uniform sampler2D uPrint; uniform float uBulge;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      vec3 pv = texture2D(uPrint, uv).rgb;
+      float body = 1.0 - smoothstep(0.15, 0.45, dot(pv, vec3(0.3, 0.59, 0.11)));
+      float wob = 1.0 + 0.12 * sin(uv.y * 30.0 + uBulge * 25.0);
+      transformed.z += body * uBulge * 0.12 * wob;`);
+    sh.fragmentShader = 'uniform float uO, uK, uTear; uniform vec2 uOff; uniform sampler2D uPrint, uGrain;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      // 破れ：けものの形に穴があく（ふちは少しギザギザ）
+      vec3 pt = texture2D(uPrint, vMapUv).rgb;
+      float hole = 1.0 - smoothstep(0.15, 0.45, dot(pt, vec3(0.3, 0.59, 0.11)));
+      float jag = fract(sin(dot(floor(vMapUv * 80.0), vec2(12.9898, 78.233))) * 43758.5453);
+      if (uTear > 0.0 && hole > 0.55 - jag * 0.25 * uTear && hole * uTear > 0.3) discard;
       float g = texture2D(uGrain, vMapUv * 1.5).r;
       vec3 pc = texture2D(uPrint, vMapUv).rgb;
       float mO = smoothstep(0.1, 0.3, pc.r - pc.g) * uO * (1.0 - g * 0.3);
@@ -93,7 +106,8 @@ export async function createShop(renderer, env) {
       diffuseColor.rgb *= mix(vec3(1.0), vec3(1.0, 0.3, 0.1), mO * 0.95);
       diffuseColor.rgb *= mix(vec3(1.0), vec3(0.07), mK * 0.95);`);
   };
-  const sheet = add(new THREE.PlaneGeometry(0.6, 0.9), sheetMat);
+  const sheet = add(new THREE.PlaneGeometry(0.6, 0.9, 60, 90), sheetMat);
+  sheet.material.side = THREE.DoubleSide;
   // せり上がった紙を正面から照らす光（ランプの円の外でも読めるように）
   const showLight = new THREE.PointLight(0xfff0dc, 0, 3.5, 1.5);
   showLight.position.set(0.2, 2.3, 3.0);
@@ -205,6 +219,13 @@ export async function createShop(renderer, env) {
   holder.position.set(-0.62, 1.55, -0.85);
   holder.rotation.y = 0.45;
   scene.add(holder);
+  // 紙から出てくる、もう1匹（刷ったポスターのけものが立体になる）
+  const mon2 = createCreature({ envMap: env, glowScale: 0.45 });
+  mon2.group.traverse((o) => { if (o.material?.envMapIntensity !== undefined) o.material.envMapIntensity *= 0.4; });
+  const holder2 = new THREE.Group();
+  holder2.add(mon2.group);
+  holder2.visible = false;
+  scene.add(holder2);
   const rim = new THREE.PointLight(0xc8ffe0, 1.6, 1.4, 1.6);
   rim.position.set(-0.95, 2.0, -1.35);
   scene.add(rim);
@@ -223,6 +244,8 @@ export async function createShop(renderer, env) {
   // 紙の3つの位置：排紙台（最初）／機械の中／カメラの前（刷り上がりを見せる）
   const TRAY = { p: new THREE.Vector3(0, 1.08, 0.25), r: -Math.PI / 2 + 0.8 };
   const IN = { p: new THREE.Vector3(0, 1.12, -0.3), r: -Math.PI / 2 + 0.8 };
+  const UPRIGHT = { p: new THREE.Vector3(0.0, 1.52, 0.62), r: -0.05 };   // 紙から出る前に、機械の上ですっと立ち上がる
+  const OUT2 = new THREE.Vector3(0.55, 1.55, -0.8);                      // 飛び出したけものが着地する所（印刷機の上、もとのけものの隣）
   const SHOW = { p: new THREE.Vector3(0.0, 1.16, 0.42), r: -Math.PI / 2 + 1.05 };   // 手前の台の上で少し起き上がる（カメラの前までは来ない）
   const lerpPose = (A, B, k) => ({ p: A.p.clone().lerp(B.p, k), r: A.r + (B.r - A.r) * k });
 
@@ -245,12 +268,32 @@ export async function createShop(renderer, env) {
     });
     const aligned = st.presses.length >= 3 && t - st.presses[2] > PASS * 0.42;
     ink.uOff.value.set(aligned ? 0 : 0.03, aligned ? 0 : -0.022);
+    // G5：3回目の刷り上がりから、立つ → 盛り上がる → 破れて飛び出す → 着地
+    const e3 = st.presses.length >= 3 ? t - (st.presses[2] + PASS) : -1;
+    const seg = (a, b) => Math.max(0, Math.min(1, (e3 - a) / (b - a)));
+    if (e3 >= 0) pose = lerpPose(SHOW, UPRIGHT, ease(seg(EMERGE.stand, EMERGE.bulge)));
+    ink.uBulge.value = e3 < EMERGE.bulge ? 0 : ease(seg(EMERGE.bulge, EMERGE.tear)) + (e3 > EMERGE.tear ? -seg(EMERGE.tear, EMERGE.tear + 0.2) * 0.6 : 0);
+    ink.uTear.value = seg(EMERGE.tear, EMERGE.tear + 0.12);
     sheet.position.copy(pose.p);
     sheet.rotation.set(pose.r, 0, 0);
+    // 盛り上がるあいだ、紙が小刻みに震える
+    if (e3 > EMERGE.bulge && e3 < EMERGE.tear) sheet.position.x += Math.sin(t * 60) * 0.004 * seg(EMERGE.bulge, EMERGE.tear);
+    // 飛び出したけもの：紙の中央から、ぺらっと平たい状態で出て、立体に膨らみながら弧を描いて床へ
+    holder2.visible = e3 >= EMERGE.tear;
+    if (holder2.visible) {
+      const k = seg(EMERGE.tear, EMERGE.land);
+      const from = UPRIGHT.p.clone().add(new THREE.Vector3(0, -0.3, 0.05));
+      holder2.position.lerpVectors(from, OUT2, ease(k));
+      holder2.position.y += Math.sin(k * Math.PI) * 0.45;
+      const pop = Math.min(1, (e3 - EMERGE.tear) / 0.25);
+      const land = e3 > EMERGE.land ? Math.exp(-(e3 - EMERGE.land) * 7) * Math.cos((e3 - EMERGE.land) * 20) : 0;
+      holder2.scale.set(0.62 * (1 + land * 0.2), 0.62 * (1 - land * 0.25), 0.62 * (0.15 + 0.85 * pop));
+      holder2.rotation.set(0, -0.45 + (1 - k) * 0.45, (1 - k) * 0.6 * Math.sin(k * 9));
+    }
     const burst = burstAt(), sb = burst === null ? -1 : t - burst;
     // 全開になったら、見せていた紙も吹き上がる紙に混ざって消える
     sheet.visible = sb < 0.15;
-    showLight.intensity = shown * 1.2 * (sb < 0 ? 1 : 0);
+    showLight.intensity = (e3 >= 0 ? 2.6 : shown * 1.2) * (sb < 0 ? 1 : 0);   // 立ち上がったポスターは正面から照らす
     // 版胴：1回ごとに1回転。全開のあとは高速で回り続ける
     let ang = 0;
     st.presses.forEach((p) => { ang += Math.PI * 2 * ease(Math.max(0, Math.min(1, (t - p) / PASS))); });
@@ -271,7 +314,10 @@ export async function createShop(renderer, env) {
     const beat = Math.abs(Math.sin(t * Math.PI * 2));
     holder.position.y = 1.55 + (sb < 0 ? beat * 0.02 : 0);
     const since = sb < 0 ? -1 : Math.min(sb, lastClickAgo);
-    mon.update({ t, power: Math.min(1, spark * 0.8 + st.presses.length * 0.12 + st.hold * 0.8), sinceImpact: since, look });
+    // もとのけもの：紙から仲間が出てきた瞬間にびっくりして跳ねる
+    const surprised = e3 >= EMERGE.tear && sb < 0 ? e3 - EMERGE.tear : since;
+    mon.update({ t, power: Math.min(1, spark * 0.8 + st.presses.length * 0.12 + st.hold * 0.8), sinceImpact: surprised, look: e3 >= EMERGE.tear && sb < 0 ? { x: 0.8, y: -0.5 } : look });
+    if (holder2.visible) mon2.update({ t: t + 1.7, power: Math.min(1, 0.3 + st.hold * 0.8), sinceImpact: sb < 0 ? -1 : since, look });
     const intro = Math.min(1, (t - st.enterAt) / 1.0), e = 1 - (1 - intro) ** 3;
     const shake = hit * 0.05;
     camera.position.set(look.x * 0.35 + Math.sin(t * 59) * shake, 2.0 + look.y * 0.15 + Math.cos(t * 47) * shake, 3.3 + 1.2 * e);
@@ -284,7 +330,7 @@ export async function createShop(renderer, env) {
     scene, camera,
     get hint() { return raining() ? 'CLICK / DRAG / HOLD' : 'CLICK'; },
     setQuality() {},
-    reset() { Object.assign(st, { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, lastP: null, lastClick: -10 }); },
+    reset() { holder2.visible = false; Object.assign(st, { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, lastP: null, lastClick: -10 }); },
     enter() { sfx('feed', { gain: 1.2 }); groove?.stop(); groove = sfx('groove', { gain: 0.6, loop: true }); },
     leave() { groove?.stop(0.2); groove = null; swirl?.stop(); swirl = null; },
     down(ndc) {
@@ -319,6 +365,14 @@ export async function createShop(renderer, env) {
       st.t += dt;
       const b = burstAt();
       if (b !== null && prev < b && st.t >= b) { sfx('final'); sfx('impact', { gain: 0.7 }); }
+      // G5 の音：立つ（紙の音）→ 盛り上がる（唸り）→ 破れる（パン！）→ 着地
+      if (st.presses.length >= 3) {
+        const base = st.presses[2] + PASS, at = (x) => prev < base + x && st.t >= base + x;
+        if (at(EMERGE.stand)) sfx('feed', { gain: 0.8 });
+        if (at(EMERGE.bulge)) sfx('charge', { gain: 0.45, offset: 0.6 });
+        if (at(EMERGE.tear)) { sfx('snap', { gain: 1.2 }); sfx('hit', { gain: 0.8 }); }
+        if (at(EMERGE.land)) sfx('press1', { gain: 0.6 });   // 着地のドスッ
+      }
       // 風は吹いたあと弱まっていく。流された分は積み重なる
       st.windV *= Math.exp(-dt * 1.4);
       st.windX += st.windV * dt;

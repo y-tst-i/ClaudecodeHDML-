@@ -183,7 +183,8 @@ export function createCreature({ envMap = null, glowScale = 1 } = {}) {
   }
 
   // ---------- 動き ----------
-  function update({ t = 0, power = 0, sinceImpact = -1, look = { x: 0, y: 0 } } = {}) {
+  // chomp 0..1：うつむいて光を噛む／fat 0..1：食べた光で体がふくらむ／sneeze 0..1：くしゃみの前に頭がのけぞる
+  function update({ t = 0, power = 0, sinceImpact = -1, look = { x: 0, y: 0 }, chomp = 0, fat = 0, sneeze = 0 } = {}) {
     const impacted = sinceImpact >= 0;
     // 跳ねる：衝撃の瞬間に沈んで → 跳ぶ → 着地でつぶれる
     let jump = 0, squash = 0;
@@ -195,10 +196,11 @@ export function createCreature({ envMap = null, glowScale = 1 } = {}) {
     } else squash = power * 0.06 * (0.6 + 0.4 * Math.sin(t * 30));   // 溜めているあいだ、ぶるぶる震える
     const breath = Math.sin(t * 2.4) * 0.012;
     root.position.y = jump;
-    rig.scale.set(1 + squash * 0.5, 1 - squash + breath, 1 + squash * 0.5);
+    const puff = 1 + fat * 0.22;
+    rig.scale.set((1 + squash * 0.5) * puff, (1 - squash + breath) * (1 + fat * 0.06), (1 + squash * 0.5) * puff);
     // 頭：マウスの方を見る。ゆっくり首をかしげる
     head.rotation.y = look.x * 0.45 + Math.sin(t * 0.7) * 0.05;
-    head.rotation.x = -look.y * 0.18 + Math.sin(t * 0.9) * 0.02;
+    head.rotation.x = -look.y * 0.18 + Math.sin(t * 0.9) * 0.02 + chomp * (0.32 + 0.16 * Math.max(0, Math.sin(t * 16))) - sneeze * 0.55;
     head.rotation.z = Math.sin(t * 0.5) * 0.06;
     // まばたき（3.7秒ごと。衝撃の直後は目を見開く）
     const bk = (t / 3.7 + 0.31) % 1;

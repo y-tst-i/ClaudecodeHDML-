@@ -37,15 +37,41 @@ export async function createRoom(renderer, env) {
   const HOME = new THREE.Vector3(0.32, 1.12, 1.0);
   const FRONT = new THREE.Vector3(-0.12, 0.0, 2.35);   // 画面の前の床に降りる
   const SCREEN = new THREE.Vector3(-0.15, 0.5, 1.6);   // 画面の表面（ここへ吸い込まれる）
-  const st = { t: 0, power: 0, impactAt: null, holding: false };
+  const st = { t: 0, power: 0, impactAt: null, holding: false, sneezeAt: null, lastBite: 0 };
+  const SNEEZE = 0.6;   // 満腹になってから、くしゃみ（＝衝撃）までの「ハ…ハ…」
+  // G1「光を噛む」：主役の画面から、けものの口へ流れ込む光の粒（すべて同じ式で動かす）
+  const N_BITE = 42;
+  const biteMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xc8ffe0).multiplyScalar(2.2) }), N_BITE);
+  biteMesh.frustumCulled = false;
+  world.scene.add(biteMesh);
+  const B0 = new THREE.Vector3(-0.15, 0.98, 1.6), B1 = new THREE.Vector3(0.05, 1.45, 1.55), B2 = new THREE.Vector3(0.27, 1.5, 1.2);
+  const bm = new THREE.Object3D(), bp = new THREE.Vector3();
+  function placeBite(amount, t) {
+    for (let i = 0; i < N_BITE; i++) {
+      const u = (t * 1.3 + i / N_BITE) % 1, a = 1 - u;
+      bp.set(0, 0, 0).addScaledVector(B0, a * a).addScaledVector(B1, 2 * a * u).addScaledVector(B2, u * u);   // 2次ベジェ
+      bp.x += Math.sin(i * 12.9 + t * 7) * 0.03 * a; bp.y += Math.cos(i * 7.3 + t * 6) * 0.03 * a;
+      bm.position.copy(bp);
+      bm.scale.setScalar(amount * (0.006 + 0.012 * ((i * 0.618) % 1)) * (1 - u * 0.6));
+      bm.updateMatrix();
+      biteMesh.setMatrixAt(i, bm.matrix);
+    }
+    biteMesh.instanceMatrix.needsUpdate = true;
+    biteMesh.visible = amount > 0.001;
+  }
   let charge = null;
   const ease = (x) => x * x * (3 - 2 * x);
 
   function draw(look) {
     const { t, power } = st;
     const since = st.impactAt === null ? -1 : t - st.impactAt;
-    const { hit } = world.update({ t, power, sinceImpact: since });
-    mon.update({ t, power, sinceImpact: since, look });
+    const { hit } = world.update({ t, power, sinceImpact: since, bite: true });
+    // 噛む：押しているあいだ、うつむいて光を食べ、体がふくらむ。満腹で「ハ…ハ…」とのけぞり、くしゃみで全部のテレビへ光を吐き戻す
+    const eating = st.impactAt === null && st.sneezeAt === null && st.holding && power > 0.02;
+    const sneeze = st.sneezeAt !== null && st.impactAt === null ? Math.min(1, (t - st.sneezeAt) / (SNEEZE * 0.9)) : 0;
+    const fat = st.impactAt === null ? power : Math.max(0, 1 - since * 4);
+    placeBite(eating ? Math.min(1, power * 10) : 0, t);
+    mon.update({ t, power, sinceImpact: since, look: eating ? { x: -0.6, y: -0.6 } : look, chomp: eating ? 1 : 0, fat, sneeze });
     // ---- 飛び込み（衝撃から EXIT_WAIT 秒後。e = 飛び込みの経過秒）----
     // 0.00–0.55 テレビの上から画面の前の床へ跳び降りる
     // 0.55–0.90 画面の方を向いて、かがむ（溜め）
@@ -98,7 +124,7 @@ export async function createRoom(renderer, env) {
   return {
     scene: world.scene, camera, hint: 'HOLD',
     setQuality: world.setQuality,
-    reset() { st.t = 0; st.power = 0; st.impactAt = null; st.holding = false; holder.visible = true; world.hero.mat.uniforms.uRipple.value = -1; camera.fov = 34; camera.updateProjectionMatrix(); },
+    reset() { st.t = 0; st.power = 0; st.impactAt = null; st.holding = false; st.sneezeAt = null; st.lastBite = 0; holder.visible = true; world.hero.mat.uniforms.uRipple.value = -1; camera.fov = 34; camera.updateProjectionMatrix(); },
     down() { st.holding = true; },
     up() { st.holding = false; charge?.stop(0.08); charge = null; },
     move() {},
@@ -110,9 +136,12 @@ export async function createRoom(renderer, env) {
         if (st.holding) {
           if (!charge) charge = sfx('charge', { offset: Math.max(0, st.power * 1.6) });
           st.power = Math.min(1, st.power + dt * 0.55);
-        } else st.power = Math.max(0, st.power - dt * 0.8);
-        for (const tv of world.tvs) if (prev < tv.threshold && st.power >= tv.threshold) sfx('snap', { gain: tv.hero ? 1 : 0.45, pan: tv.pan });
-        if (st.power >= 1) { st.impactAt = st.t; charge?.stop(0.02); charge = null; sfx('impact'); }
+        } else if (st.sneezeAt === null) st.power = Math.max(0, st.power - dt * 0.8);
+        if (prev < 0.02 && st.power >= 0.02) sfx('snap', { gain: 1 });                       // 主役の画面だけ点く
+        // 噛む音：押しているあいだ、0.22秒ごとに「カプッ」
+        if (st.holding && st.sneezeAt === null && st.power > 0.02 && st.t - st.lastBite > 0.22) { st.lastBite = st.t; sfx('snap', { gain: 0.35, pan: 0.2 }); }
+        if (st.power >= 1 && st.sneezeAt === null) { st.sneezeAt = st.t; charge?.stop(0.05); charge = null; sfx('charge', { gain: 0.5, offset: 1.2 }); }
+        if (st.sneezeAt !== null && st.t - st.sneezeAt >= SNEEZE) { st.impactAt = st.t; sfx('impact'); sfx('hit', { gain: 0.9 }); }
       } else {
         const since = st.t - st.impactAt;
         const e = since - EXIT_WAIT, pe = e - dt;
@@ -133,7 +162,8 @@ export async function createRoom(renderer, env) {
     // ?mode=render 用：台本どおりに state を置く
     script(t) {
       const k = Math.max(0, Math.min(1, (t - 0.6) / 2.4));
-      st.t = t; st.power = k * k * (3 - 2 * k); st.impactAt = t >= 3.0 ? 3.0 : null;
+      st.t = t; st.power = k * k * (3 - 2 * k); st.holding = t > 0.6 && t < 3.0;
+      st.sneezeAt = t >= 3.0 ? 3.0 : null; st.impactAt = t >= 3.0 + SNEEZE ? 3.0 + SNEEZE : null;
     },
     dust: world.tex.dust,
   };
