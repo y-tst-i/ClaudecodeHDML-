@@ -5,7 +5,7 @@ import { sfx } from '../audio.js';
 
 // 場面1：ブラウン管の部屋。長押しで溜める → 衝撃 → けものが主役のテレビの画面に飛び込む → 次の場面へ
 // 絵は state（t, power, impactAt）だけで決まる。操作はこの state を変えるだけ。
-export const EXIT_WAIT = 1.6, EXIT_LEN = 1.5;   // 衝撃のあと少し待って、飛び込む
+export const EXIT_WAIT = 1.6, EXIT_LEN = 2.4;   // 衝撃のあと少し待って、飛び込む
 
 export async function createRoom(renderer, env) {
   const world = await createWorld(renderer, {
@@ -34,7 +34,9 @@ export async function createRoom(renderer, env) {
   world.scene.add(monLight);
   const camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.1, 60);
 
-  const HOME = new THREE.Vector3(0.32, 1.12, 1.0), SCREEN = new THREE.Vector3(-0.15, 0.56, 1.62);
+  const HOME = new THREE.Vector3(0.32, 1.12, 1.0);
+  const FRONT = new THREE.Vector3(-0.12, 0.0, 2.35);   // 画面の前の床に降りる
+  const SCREEN = new THREE.Vector3(-0.15, 0.5, 1.6);   // 画面の表面（ここへ吸い込まれる）
   const st = { t: 0, power: 0, impactAt: null, holding: false };
   let charge = null;
   const ease = (x) => x * x * (3 - 2 * x);
@@ -44,30 +46,59 @@ export async function createRoom(renderer, env) {
     const since = st.impactAt === null ? -1 : t - st.impactAt;
     const { hit } = world.update({ t, power, sinceImpact: since });
     mon.update({ t, power, sinceImpact: since, look });
-    // 飛び込み：衝撃から EXIT_WAIT 秒後、弧を描いて主役の画面へ。小さくなって吸い込まれる
-    const k = Math.max(0, Math.min(1, (since - EXIT_WAIT) / (EXIT_LEN * 0.6)));
-    holder.position.lerpVectors(HOME, SCREEN, ease(k));
-    holder.position.y += Math.sin(k * Math.PI) * 0.45;
-    holder.scale.setScalar(0.74 * (1 - 0.9 * k * k));
-    holder.rotation.y = -0.25 + k * 0.25;
-    holder.visible = k < 0.99;
+    // ---- 飛び込み（衝撃から EXIT_WAIT 秒後。e = 飛び込みの経過秒）----
+    // 0.00–0.55 テレビの上から画面の前の床へ跳び降りる
+    // 0.55–0.90 画面の方を向いて、かがむ（溜め）
+    // 0.90–1.15 画面へ跳ぶ。進む向きに体が伸び、小さくなって吸い込まれる
+    // 1.10–     画面に波紋が広がる。1.2 からカメラが画面へ突っ込み、ブラウン管の画素が視界を埋める
+    const e = since - EXIT_WAIT;
+    const seg = (a, b) => Math.max(0, Math.min(1, (e - a) / (b - a)));
+    holder.scale.setScalar(0.74);
+    holder.visible = true;
+    if (e < 0) {
+      holder.position.copy(HOME); holder.rotation.y = -0.25;
+    } else if (e < 0.55) {
+      const k = seg(0, 0.55);
+      holder.position.lerpVectors(HOME, FRONT, ease(k));
+      holder.position.y += Math.sin(k * Math.PI) * 0.35;
+      holder.rotation.y = -0.25 + (Math.PI - 0.25 + 0.25) * ease(k);          // くるっと画面の方を向く
+    } else if (e < 0.9) {
+      const k = seg(0.55, 0.9);
+      holder.position.copy(FRONT); holder.rotation.y = Math.PI;
+      const crouch = Math.sin(k * Math.PI * 0.5);                              // かがんで溜める
+      holder.scale.set(0.74 * (1 + crouch * 0.18), 0.74 * (1 - crouch * 0.28), 0.74 * (1 + crouch * 0.18));
+    } else {
+      const k = seg(0.9, 1.15);
+      holder.position.lerpVectors(FRONT, SCREEN, k * k);
+      holder.position.y += Math.sin(k * Math.PI) * 0.2;
+      holder.rotation.y = Math.PI;
+      const sz = 0.74 * (1 - 0.85 * k);
+      holder.scale.set(sz * (1 - 0.5 * k), sz * (1 - 0.5 * k), sz * (1 + 2.2 * k));   // 進む向きに伸びる
+      holder.visible = k < 1;
+    }
+    world.hero.mat.uniforms.uRipple.value = e >= 1.1 ? e - 1.1 : -1;
+    const dive = seg(1.2, 2.15), dd = dive * dive * (3 - 2 * dive);
+    const mask = seg(1.75, EXIT_LEN);
     monLight.intensity = 0.15 + Math.min(1, since >= 0 ? 1 : power) * 0.35 + hit * 1.2;
     // カメラ：ふだんはゆっくり寄りながら覗き込める。飛び込むときは主役の画面へ一気に寄る
     const dolly = 6.6 - Math.min(t, 20) * 0.02 - power * 0.35;
     const shake = hit * 0.06;
     const base = new THREE.Vector3(look.x * 0.45 + Math.sin(t * 61) * shake, 1.35 + look.y * 0.2 + Math.cos(t * 53) * shake, dolly);
-    const dive = Math.max(0, Math.min(1, (since - EXIT_WAIT - EXIT_LEN * 0.3) / (EXIT_LEN * 0.7)));
-    const d = dive * dive * dive;
-    camera.position.lerpVectors(base, new THREE.Vector3(-0.15, 0.56, 1.75), d);
-    const target = new THREE.Vector3(look.x * 0.15, 1.2 + look.y * 0.08, 0).lerp(new THREE.Vector3(-0.15, 0.56, 1.5), Math.min(1, d * 1.5));
+    // 飛び降りる間はけものを追い、そのあと画面へ突っ込む
+    const follow = seg(0, 0.9) * (1 - dive);
+    const watch = base.clone().lerp(new THREE.Vector3(0.2, 1.0, 4.6), follow * 0.6);
+    camera.position.lerpVectors(watch, new THREE.Vector3(-0.15, 0.53, 1.66), dd);
+    const target = new THREE.Vector3(look.x * 0.15, 1.2 + look.y * 0.08, 0).lerp(new THREE.Vector3(-0.1, 0.7, 2.0), follow).lerp(new THREE.Vector3(-0.15, 0.5, 1.5), Math.min(1, dd * 1.4));
     camera.lookAt(target);
-    return { hit: Math.max(hit, d * d * 0.6), power };
+    camera.fov = 34 - dd * 8;
+    camera.updateProjectionMatrix();
+    return { hit, power, mask };
   }
 
   return {
     scene: world.scene, camera, hint: 'HOLD',
     setQuality: world.setQuality,
-    reset() { st.t = 0; st.power = 0; st.impactAt = null; st.holding = false; holder.visible = true; },
+    reset() { st.t = 0; st.power = 0; st.impactAt = null; st.holding = false; holder.visible = true; world.hero.mat.uniforms.uRipple.value = -1; camera.fov = 34; camera.updateProjectionMatrix(); },
     down() { st.holding = true; },
     up() { st.holding = false; charge?.stop(0.08); charge = null; },
     move() {},
@@ -84,7 +115,13 @@ export async function createRoom(renderer, env) {
         if (st.power >= 1) { st.impactAt = st.t; charge?.stop(0.02); charge = null; sfx('impact'); }
       } else {
         const since = st.t - st.impactAt;
-        if (since - dt < EXIT_WAIT && since >= EXIT_WAIT) sfx('drop', { gain: 0.7 });
+        const e = since - EXIT_WAIT, pe = e - dt;
+        const at = (x) => pe < x && e >= x;
+        if (at(0)) sfx('rattle', { gain: 0.6 });               // 跳び降りる
+        if (at(0.5)) sfx('snap', { gain: 0.9 });               // 床に着地
+        if (at(0.9)) sfx('drop', { gain: 0.8 });               // 画面へ跳ぶ
+        if (at(1.1)) sfx('hit', { gain: 0.7 });                // 吸い込まれる
+        if (at(1.75)) sfx('charge', { gain: 0.5, offset: 1.0 });   // 画素に吸い込まれていく唸り
         if (since >= EXIT_WAIT + EXIT_LEN) return 'exit';
       }
       return null;

@@ -42,6 +42,7 @@ const screenFrag = /* glsl */ `
 precision highp float;
 uniform sampler2D uRT, uSmudge;
 uniform float uT, uOn, uStatic, uFlash, uSeed, uGain;
+uniform float uRipple;   // けものが飛び込んでからの秒（負なら無し）
 uniform vec3 uTint;
 uniform vec4 uCrop;   // xy = 中心, z = 拡大率（テレビごとに映す範囲を変える）
 varying vec2 vUv;
@@ -52,6 +53,16 @@ void main(){
   vec2 u = c + 0.5;
   float inside = step(0.0, u.x) * step(u.x, 1.0) * step(0.0, u.y) * step(u.y, 1.0);
   // 映像（RenderTarget は表示用の値なので、明るさの計算用に戻す）
+  // 飛び込んだ所から波紋が広がる（画面の中身がゆがみ、波の頭が光る）
+  float rip = 0.0;
+  if (uRipple >= 0.0) {
+    vec2 rc = u - vec2(0.5, 0.45);
+    float rd = length(rc * vec2(1.33, 1.0));
+    float front = uRipple * 0.9;
+    float w = sin((rd - front) * 70.0) * exp(-abs(rd - front) * 9.0) * exp(-uRipple * 1.2);
+    u += normalize(rc + 1e-4) * w * 0.025;
+    rip = max(w, 0.0);
+  }
   vec2 cu = (u - 0.5) / uCrop.z + uCrop.xy;
   // 縦ロール（同期が外れた古いテレビ）
   cu.y = fract(cu.y + uCrop.w * uT);
@@ -66,6 +77,7 @@ void main(){
   col = col * open + vec3(0.8, 1.0, 0.9) * line;
   col *= 0.8 + 0.2 * sin(u.y * 540.0);        // 走査線
   col += vec3(0.9, 1.0, 0.95) * uFlash * (0.4 + 0.6 * open);   // 衝撃の白
+  col += vec3(0.8, 1.0, 0.9) * rip * 1.5;
   col *= inside * uGain;
   col = col / (1.0 + 0.1 * max(max(col.r, col.g), col.b));   // 明るすぎる所はなだらかに頭打ち（白飛びで形が消えないように）
   // ガラス：消えていても、うっすら映り込みと指紋が見える
@@ -169,7 +181,7 @@ export async function createWorld(renderer, files) {
     geo.computeVertexNormals();
     const mat = new THREE.ShaderMaterial({
       vertexShader: screenVert, fragmentShader: screenFrag,
-      uniforms: { uRT: { value: channels[channel] }, uSmudge: { value: tex.smudge }, uTint: { value: new THREE.Color(1, 1, 1) }, uCrop: { value: new THREE.Vector4(0.5, 0.5, 1, 0) }, uT: { value: 0 }, uOn: { value: 0 }, uStatic: { value: 1 }, uFlash: { value: 0 }, uSeed: { value: rnd() * 100 }, uGain: { value: 1 } },
+      uniforms: { uRT: { value: channels[channel] }, uSmudge: { value: tex.smudge }, uTint: { value: new THREE.Color(1, 1, 1) }, uCrop: { value: new THREE.Vector4(0.5, 0.5, 1, 0) }, uT: { value: 0 }, uOn: { value: 0 }, uStatic: { value: 1 }, uFlash: { value: 0 }, uSeed: { value: rnd() * 100 }, uGain: { value: 1 }, uRipple: { value: -1 } },
     });
     const screen = new THREE.Mesh(geo, mat);
     screen.position.set(-panel / 2, 0, d / 2 - 0.005);
@@ -255,7 +267,7 @@ export async function createWorld(renderer, files) {
   scene.add(key);
 
   return {
-    scene, tvs, tex,
+    scene, tvs, tex, hero,
     // 画質の段階：2（LOW）では床の映り込み（場面をもう1回描く重い処理）を止める
     setQuality(q) { wet.visible = q < 2; },
     // 絵の状態を決める。power 0..1（溜まり具合）、sinceImpact（衝撃からの秒。衝撃前は負）

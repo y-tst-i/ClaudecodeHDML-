@@ -74,12 +74,29 @@ export async function createAlley(renderer, env) {
   const g2 = canvas.getContext('2d');
   const paintTex = new THREE.CanvasTexture(canvas);
   paintTex.colorSpace = THREE.SRGBColorSpace;
-  const paint = new THREE.Mesh(new THREE.PlaneGeometry(PAINT_W, PAINT_H), new THREE.MeshStandardMaterial({ map: paintTex, transparent: true, roughness: 0.55, emissive: 0xc7ffdb, emissiveMap: paintTex, emissiveIntensity: 0.18 }));
+  // 吹いた跡：タグが完成したら、タグの外にはみ出た跡は垂れて流れ落ちながら消え、タグの中だけが残る
+  const melt = { value: 0 }, KEEP_OVERSPRAY = new URLSearchParams(location.search).has('keep');   // ?keep で跡を残す版
+  const paintMat = new THREE.MeshStandardMaterial({ map: paintTex, transparent: true, roughness: 0.55, emissive: 0xff481b, emissiveIntensity: 0.55 });
+  paintMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uMelt = melt; sh.uniforms.uLogo = { value: tex.logoB };
+    sh.fragmentShader = 'uniform float uMelt;\nuniform sampler2D uLogo;\n' + sh.fragmentShader
+      .replace('#include <map_fragment>', `
+        float inTag = smoothstep(0.3, 0.6, texture2D(uLogo, vMapUv).a);
+        float col = floor(vMapUv.x * 140.0);
+        float speed = 0.5 + fract(sin(col * 12.9898) * 43758.5453);         // 縦の筋ごとに垂れる速さが違う
+        vec2 duv = vMapUv + vec2(0.0, uMelt * uMelt * 0.35 * speed * (1.0 - inTag));
+        vec4 sampledDiffuseColor = texture2D(map, duv);
+        sampledDiffuseColor.a *= mix(1.0 - smoothstep(0.35, 1.0, uMelt), 1.0, inTag);
+        diffuseColor *= sampledDiffuseColor;`)
+      .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance *= diffuseColor.a;');
+  };
+  const paint = new THREE.Mesh(new THREE.PlaneGeometry(PAINT_W, PAINT_H), paintMat);
   paint.position.set(0, 1.55, -0.97);
   scene.add(paint);
   // 完成したタグ：オレンジのスプレー。左から右へ吹きつけるように現れ、垂れる
   const reveal = { value: 0 }, drip = { value: 0 };
-  const tagMat = new THREE.MeshStandardMaterial({ map: tex.logoB, color: 0xff481b, transparent: true, roughness: 0.5, emissive: 0xff5a1f, emissiveIntensity: 0.9 });
+  // タグも吹いた跡と同じオレンジ・同じ光り方（色を揃える）
+  const tagMat = new THREE.MeshStandardMaterial({ map: tex.logoB, color: 0xff481b, transparent: true, roughness: 0.55, emissive: 0xff481b, emissiveIntensity: 0.55 });
   tagMat.onBeforeCompile = (sh) => {
     sh.uniforms.uReveal = reveal; sh.uniforms.uDrip = drip;
     sh.fragmentShader = 'uniform float uReveal, uDrip;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
@@ -154,13 +171,13 @@ export async function createAlley(renderer, env) {
     const r = mulberry32(1000 + i);
     const x = p.u * canvas.width, y = (1 - p.v) * canvas.height, R = 24;
     const grad = g2.createRadialGradient(x, y, 0, x, y, R);
-    grad.addColorStop(0, 'rgba(236,255,244,0.85)');
-    grad.addColorStop(0.45, 'rgba(236,255,244,0.45)');
-    grad.addColorStop(0.75, 'rgba(236,255,244,0.08)');
-    grad.addColorStop(1, 'rgba(232,255,240,0)');
+    grad.addColorStop(0, 'rgba(255,72,27,0.9)');
+    grad.addColorStop(0.45, 'rgba(255,72,27,0.5)');
+    grad.addColorStop(0.75, 'rgba(255,72,27,0.1)');
+    grad.addColorStop(1, 'rgba(255,72,27,0)');
     g2.fillStyle = grad;
     g2.beginPath(); g2.arc(x, y, R, 0, Math.PI * 2); g2.fill();
-    g2.fillStyle = 'rgba(240,255,245,0.85)';
+    g2.fillStyle = 'rgba(255,96,52,0.9)';
     for (let k = 0; k < 34; k++) {
       const a = r() * Math.PI * 2, d = R * (0.4 + r() * 1.4), s = 0.6 + r() * 1.8;
       g2.fillRect(x + Math.cos(a) * d, y + Math.sin(a) * d, s, s);
@@ -203,6 +220,7 @@ export async function createAlley(renderer, env) {
     // 完成：0.5秒で吹きつけるように現れ、そのあと垂れる
     reveal.value = since < 0 ? 0 : Math.min(1, since / 0.5);
     drip.value = since < 0.4 ? 0 : Math.min(1, ((since - 0.4) / 1.6) ** 2);
+    melt.value = since < 0.5 || KEEP_OVERSPRAY ? 0 : Math.min(1, (since - 0.5) / 2.2);
     const hit = since < 0 ? 0 : Math.exp(-since * 4) * 0.8;
     // ノズルの光（吹いている所がぼんやり光る）
     if (st.nozzle && st.holding && st.completeAt === null) { nozzleLight.position.copy(st.nozzle).add(new THREE.Vector3(0, 0, 0.3)); nozzleLight.intensity = 0.6 + st.speed * 2; }
@@ -216,7 +234,9 @@ export async function createAlley(renderer, env) {
     const shake = hit * 0.05;
     camera.position.set(look.x * 0.3 + Math.sin(t * 57) * shake, 1.3 + look.y * 0.15 + Math.cos(t * 49) * shake, 2.2 + 2.6 * e);
     camera.lookAt(look.x * 0.1, 1.0, -1);
-    return { hit: Math.max(hit, (1 - intro) * 0.5), power: Math.min(1, st.coverage / COMPLETE_AT) * 0.5 };
+    // 入ってきた瞬間：前の場面から続くブラウン管の画素が縮んで、路地が現れる
+    const mask = Math.max(0, 1 - (t - st.enterAt) / 0.6);
+    return { hit: Math.max(hit, (1 - intro) * 0.3), power: Math.min(1, st.coverage / COMPLETE_AT) * 0.5, mask: mask * mask };
   }
 
   return {

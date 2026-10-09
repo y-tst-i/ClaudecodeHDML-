@@ -37,8 +37,8 @@ function fit() {
 }
 fit();
 function render(t, look) {
-  const { hit, power } = scenes[cur].draw(look);
-  post.render({ t, hit, power });
+  const { hit, power, mask = 0 } = scenes[cur].draw(look);
+  post.render({ t, hit, power, mask });
 }
 
 if (RENDER) {
