@@ -22,19 +22,19 @@ export async function createShop(renderer, env) {
     return t;
   };
   const tex = {
-    floor: await load(new URL('../../assets/shop/floor_ink.jpg', import.meta.url).href, true, 5, 5),
-    peg: await load(new URL('../../assets/shop/pegboard.jpg', import.meta.url).href, true, 4, 2),
-    enamel: await load(new URL('../../assets/shop/enamel_black.jpg', import.meta.url).href),
-    drum: await load(new URL('../../assets/shop/drum_mesh.jpg', import.meta.url).href, true, 2, 1),
-    edge: await load(new URL('../../assets/shop/paper_edge.jpg', import.meta.url).href),
-    steel: await load(new URL('../../assets/shop/metal_brushed_dark.jpg', import.meta.url).href),
-    printA: await load(new URL('../../assets/shop/print_a.jpg', import.meta.url).href),
-    printB: await load(new URL('../../assets/shop/print_b.jpg', import.meta.url).href),
-    posterA: await load(new URL('../../assets/alley/poster_a.jpg', import.meta.url).href),
-    posterC: await load(new URL('../../assets/alley/poster_c.jpg', import.meta.url).href),
-    paper: await load(new URL('../../assets/tex/riso_paper.jpg', import.meta.url).href),
-    grain: await load(new URL('../../assets/tex/riso_grain.jpg', import.meta.url).href, false),
-    logoA: await load(new URL('../../assets/logo/logo_a_mode.png', import.meta.url).href, false),
+    floor: await load(new URL('../../assets/shop/floor_ink.webp', import.meta.url).href, true, 5, 5),
+    peg: await load(new URL('../../assets/shop/pegboard.webp', import.meta.url).href, true, 4, 2),
+    enamel: await load(new URL('../../assets/shop/enamel_black.webp', import.meta.url).href),
+    drum: await load(new URL('../../assets/shop/drum_mesh.webp', import.meta.url).href, true, 2, 1),
+    edge: await load(new URL('../../assets/shop/paper_edge.webp', import.meta.url).href),
+    steel: await load(new URL('../../assets/shop/metal_brushed_dark.webp', import.meta.url).href),
+    printA: await load(new URL('../../assets/shop/print_a.webp', import.meta.url).href),
+    printB: await load(new URL('../../assets/shop/print_b.webp', import.meta.url).href),
+    posterA: await load(new URL('../../assets/alley/poster_a.webp', import.meta.url).href),
+    posterC: await load(new URL('../../assets/alley/poster_c.webp', import.meta.url).href),
+    paper: await load(new URL('../../assets/tex/riso_paper.webp', import.meta.url).href),
+    grain: await load(new URL('../../assets/tex/riso_grain.webp', import.meta.url).href, false),
+    logoA: await load(new URL('../../assets/logo/logo_a_mode.webp', import.meta.url).href, false),
   };
 
   const scene = new THREE.Scene();

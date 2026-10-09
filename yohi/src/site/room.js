@@ -9,19 +9,19 @@ export const EXIT_WAIT = 1.6, EXIT_LEN = 2.4;   // 衝撃のあと少し待っ�
 
 export async function createRoom(renderer, env) {
   const world = await createWorld(renderer, {
-    logoD: new URL('../../assets/logo/logo_d_mono.png', import.meta.url).href,
-    crt: new URL('../../assets/tex/crt_glass.jpg', import.meta.url).href,
-    grain: new URL('../../assets/tex/riso_grain.jpg', import.meta.url).href,
-    logoA: new URL('../../assets/logo/logo_a_mode.png', import.meta.url).href,
-    logoB: new URL('../../assets/logo/logo_b_street.png', import.meta.url).href,
-    street: new URL('../../assets/tex/street_wall.jpg', import.meta.url).href,
-    paper: new URL('../../assets/tex/riso_paper.jpg', import.meta.url).href,
-    plastic: new URL('../../assets/room/tv_plastic.jpg', import.meta.url).href,
-    wood: new URL('../../assets/room/tv_wood.jpg', import.meta.url).href,
-    floor: new URL('../../assets/room/floor_concrete.jpg', import.meta.url).href,
-    wall: new URL('../../assets/room/wall_dark.jpg', import.meta.url).href,
-    smudge: new URL('../../assets/room/glass_smudge.jpg', import.meta.url).href,
-    dust: new URL('../../assets/room/dust_scratch.jpg', import.meta.url).href,
+    logoD: new URL('../../assets/logo/logo_d_mono.webp', import.meta.url).href,
+    crt: new URL('../../assets/tex/crt_glass.webp', import.meta.url).href,
+    grain: new URL('../../assets/tex/riso_grain.webp', import.meta.url).href,
+    logoA: new URL('../../assets/logo/logo_a_mode.webp', import.meta.url).href,
+    logoB: new URL('../../assets/logo/logo_b_street.webp', import.meta.url).href,
+    street: new URL('../../assets/tex/street_wall.webp', import.meta.url).href,
+    paper: new URL('../../assets/tex/riso_paper.webp', import.meta.url).href,
+    plastic: new URL('../../assets/room/tv_plastic.webp', import.meta.url).href,
+    wood: new URL('../../assets/room/tv_wood.webp', import.meta.url).href,
+    floor: new URL('../../assets/room/floor_concrete.webp', import.meta.url).href,
+    wall: new URL('../../assets/room/wall_dark.webp', import.meta.url).href,
+    smudge: new URL('../../assets/room/glass_smudge.webp', import.meta.url).href,
+    dust: new URL('../../assets/room/dust_scratch.webp', import.meta.url).href,
   });
   const mon = createCreature({ envMap: env, glowScale: 0.4 });
   mon.group.traverse((o) => { if (o.material?.envMapIntensity !== undefined) o.material.envMapIntensity *= 0.35; });

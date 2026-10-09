@@ -22,14 +22,14 @@ export async function createAlley(renderer, env) {
     return t;
   };
   const tex = {
-    brick: await load(new URL('../../assets/alley/wall_brick.jpg', import.meta.url).href, true, 4, 2),
-    asphalt: await load(new URL('../../assets/alley/asphalt_wet.jpg', import.meta.url).href, true, 6, 6),
-    shutter: await load(new URL('../../assets/alley/shutter_metal.jpg', import.meta.url).href, true, 1.5, 1),
-    posterA: await load(new URL('../../assets/alley/poster_a.jpg', import.meta.url).href),
-    posterB: await load(new URL('../../assets/alley/poster_b.jpg', import.meta.url).href),
-    posterC: await load(new URL('../../assets/alley/poster_c.jpg', import.meta.url).href),
-    stickers: await load(new URL('../../assets/alley/stickers.png', import.meta.url).href),
-    logoB: await load(new URL('../../assets/logo/logo_b_street.png', import.meta.url).href),
+    brick: await load(new URL('../../assets/alley/wall_brick.webp', import.meta.url).href, true, 4, 2),
+    asphalt: await load(new URL('../../assets/alley/asphalt_wet.webp', import.meta.url).href, true, 6, 6),
+    shutter: await load(new URL('../../assets/alley/shutter_metal.webp', import.meta.url).href, true, 1.5, 1),
+    posterA: await load(new URL('../../assets/alley/poster_a.webp', import.meta.url).href),
+    posterB: await load(new URL('../../assets/alley/poster_b.webp', import.meta.url).href),
+    posterC: await load(new URL('../../assets/alley/poster_c.webp', import.meta.url).href),
+    stickers: await load(new URL('../../assets/alley/stickers.webp', import.meta.url).href),
+    logoB: await load(new URL('../../assets/logo/logo_b_street.webp', import.meta.url).href),
   };
 
   const scene = new THREE.Scene();
