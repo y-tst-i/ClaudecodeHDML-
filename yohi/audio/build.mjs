@@ -1,7 +1,10 @@
 // YOHI IWAKIRI — 15秒の音をコードで合成して WAV に書き出す。
-//   node yohi/audio/build.mjs  → yohi/assets/audio/score.wav（48kHz / ステレオ / 16bit）
+//   node yohi/audio/build.mjs        → yohi/assets/audio/score.wav（48kHz / ステレオ / 16bit）
+//   node yohi/audio/build.mjs --sfx  → さらに体験型サイト用の効果音を1つずつ yohi/assets/audio/sfx/*.mp3 に
+//   （FunTech と同じく「音はファイル、鳴らすタイミングはコード」）
 // 映像と同じく「時刻だけで決まる」：乱数は種つき（mulberry32）。音のタイミングは film.js の動きから計算する。
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -211,6 +214,7 @@ function stutter(t0, t1, slot) {
 }
 
 // ---------- 譜面（film.js と同じ時刻） ----------
+function score() {
 // C1 SIGNAL 0–3
 powerOn(0);
 hum(0, 3);
@@ -257,6 +261,7 @@ for (let k = 0; k < 16; k++) tick(12.35 + k * 0.03 + 0.25, 0.6 + k * 0.03, k / 7
 rattle(12.75);
 spray(12.9, 13.9, 0.9, 0.5);
 impact(14.0, 1.1);
+}
 
 // ---------- 残響（Schroeder：コム4本＋オールパス2本、左右で長さを変えて広がり） ----------
 function reverb(inp, combs, aps) {
@@ -271,26 +276,69 @@ function reverb(inp, combs, aps) {
   }
   return out;
 }
-const wl = reverb(sendL, [1557, 1617, 1491, 1422].map((x) => x * 2), [225, 556]);
-const wr = reverb(sendR, [1580, 1640, 1514, 1445].map((x) => x * 2), [248, 579]);
-
 // ---------- 仕上げ：残響を足して、軽く潰して（tanh）、最後は減衰。16bit WAV ----------
-const pcm = Buffer.alloc(44 + N * 4);
-let peak = 0;
-for (let n = 0; n < N; n++) peak = Math.max(peak, Math.abs(L[n] + wl[n] * 0.5), Math.abs(R[n] + wr[n] * 0.5));
-const pre = 1.6 / peak;
-for (let n = 0; n < N; n++) {
-  const t = n / SR, fade = 1 - range(t, DURATION - 0.4, DURATION);
-  const l = Math.tanh((L[n] + wl[n] * 0.5) * pre) * 0.89 * fade;
-  const r = Math.tanh((R[n] + wr[n] * 0.5) * pre) * 0.89 * fade;
-  pcm.writeInt16LE(Math.round(l * 32767), 44 + n * 4);
-  pcm.writeInt16LE(Math.round(r * 32767), 46 + n * 4);
+// pre（音量の掛け率）は曲全体で決め、効果音にも同じ値を使う（効果音どうしの音量バランスが曲と同じになる）
+let pre = 1;
+function mixdown(file, seconds, { fadeOut = 0.4, normalize = false } = {}) {
+  const n = Math.round(seconds * SR);
+  const wl = reverb(sendL, [1557, 1617, 1491, 1422].map((x) => x * 2), [225, 556]);
+  const wr = reverb(sendR, [1580, 1640, 1514, 1445].map((x) => x * 2), [248, 579]);
+  if (normalize) {
+    let peak = 0;
+    for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(L[i] + wl[i] * 0.5), Math.abs(R[i] + wr[i] * 0.5));
+    pre = 1.6 / peak;
+  }
+  const pcm = Buffer.alloc(44 + n * 4);
+  for (let i = 0; i < n; i++) {
+    const t = i / SR, fade = 1 - range(t, seconds - fadeOut, seconds);
+    pcm.writeInt16LE(Math.round(Math.tanh((L[i] + wl[i] * 0.5) * pre) * 0.89 * fade * 32767), 44 + i * 4);
+    pcm.writeInt16LE(Math.round(Math.tanh((R[i] + wr[i] * 0.5) * pre) * 0.89 * fade * 32767), 46 + i * 4);
+  }
+  pcm.write('RIFF', 0); pcm.writeUInt32LE(36 + n * 4, 4); pcm.write('WAVE', 8);
+  pcm.write('fmt ', 12); pcm.writeUInt32LE(16, 16); pcm.writeUInt16LE(1, 20); pcm.writeUInt16LE(2, 22);
+  pcm.writeUInt32LE(SR, 24); pcm.writeUInt32LE(SR * 4, 28); pcm.writeUInt16LE(4, 32); pcm.writeUInt16LE(16, 34);
+  pcm.write('data', 36); pcm.writeUInt32LE(n * 4, 40);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, pcm);
 }
-pcm.write('RIFF', 0); pcm.writeUInt32LE(36 + N * 4, 4); pcm.write('WAVE', 8);
-pcm.write('fmt ', 12); pcm.writeUInt32LE(16, 16); pcm.writeUInt16LE(1, 20); pcm.writeUInt16LE(2, 22);
-pcm.writeUInt32LE(SR, 24); pcm.writeUInt32LE(SR * 4, 28); pcm.writeUInt16LE(4, 32); pcm.writeUInt16LE(16, 34);
-pcm.write('data', 36); pcm.writeUInt32LE(N * 4, 40);
-const out = path.join(path.dirname(fileURLToPath(import.meta.url)), '../assets/audio/score.wav');
-mkdirSync(path.dirname(out), { recursive: true });
-writeFileSync(out, pcm);
-console.log(`→ ${out}`);
+const clear = () => { for (const b of [L, R, sendL, sendR]) b.fill(0); };
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+score();
+mixdown(path.join(here, '../assets/audio/score.wav'), DURATION, { normalize: true });
+console.log('→ yohi/assets/audio/score.wav');
+
+// 体験型サイト用の効果音（[名前, 長さ秒, 鳴らし方]）。曲と同じ楽器を、0秒から1つずつ書き出す
+const SFX = [
+  ['power', 1.0, () => powerOn(0.01)],
+  ['charge', 1.75, () => charge(0, 1.7)],
+  ['snap', 0.2, () => snap(0.005, 1)],
+  ['impact', 2.4, () => { impact(0.01); cutHit(0.01); }],
+  ['cut', 0.8, () => cutHit(0.005, 1.2)],
+  ['rattle', 0.3, () => rattle(0.005)],
+  ['spray', 2.0, () => spray(0, 2.0, 1, 0)],
+  ['hit', 2.0, () => impact(0.01, 0.7)],
+  ['feed', 0.5, () => paperFeed(0.005, 0.42)],
+  ['press1', 1.0, () => press(0.05, 1.2)],
+  ['press2', 1.0, () => press(0.05, 1.35)],
+  ['press3', 1.4, () => { press(0.05, 1.8); sub(0.05, 0.6, 0.8); }],
+  ...[0, 1, 2, 3].map((s) => [`stab${s}`, 0.5, () => { stab(0.005, s, s % 2 ? 0.8 : 1); glitch(0.005, s); kick(0.005, 1.0, 0.3); }]),
+  ['drop', 1.6, () => { whoosh(0, 0.3); kick(0.3, 1.2, 0.6); sub(0.3, 0.9, 1.2); }],
+  ['ticks', 0.8, () => { for (let k = 0; k < 16; k++) tick(0.01 + k * 0.03, 0.6 + k * 0.03, k / 7.5 - 1); }],
+  ['final', 3.0, () => impact(0.01, 1.1)],
+  // ビートのループ（1小節 = 2秒、120BPM）
+  ['groove', 2.0, () => { for (let b = 0; b < 2; b += BEAT) { kick(b, 0.85); hat(b + 0.25); } clap(0.5); clap(1.5); for (let b = 0; b < 2; b += 0.125) hat(b, 0.35); }],
+];
+if (process.argv.includes('--sfx')) {
+  const dir = path.join(here, '../assets/audio/sfx');
+  rmSync(dir, { recursive: true, force: true });
+  for (const [name, sec, fn] of SFX) {
+    clear();
+    fn();
+    const wav = path.join(dir, `${name}.wav`);
+    mixdown(wav, sec, { fadeOut: name === 'groove' || name === 'spray' ? 0 : Math.min(0.3, sec * 0.3) });
+    execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-i', wav, '-c:a', 'libmp3lame', '-b:a', '160k', wav.replace('.wav', '.mp3')]);
+    rmSync(wav);
+  }
+  console.log(`→ yohi/assets/audio/sfx/ (${SFX.length} files)`);
+}

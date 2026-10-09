@@ -1,40 +1,23 @@
-import * as THREE from 'three';
-import { frag, DURATION } from './film.js';
+import { createStage } from './stage.js';
+import { DURATION } from './film.js';
 
 // ?mode=render のとき window.__seek / __showreel を出す（scripts/render.mjs・shoot.mjs 用）
-THREE.ColorManagement.enabled = false;
-const params = new URLSearchParams(location.search);
-const mode = params.get('mode') ?? 'film';
-const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: mode === 'render' });
-renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-renderer.setPixelRatio(1);
-renderer.setSize(1920, 1080, false);
-document.body.appendChild(renderer.domElement);
-
-const files = {
-  tA: '../assets/logo/logo_a_mode.png', tB: '../assets/logo/logo_b_street.png', tD: '../assets/logo/logo_d_mono.png',
-  tWall: '../assets/tex/street_wall.png', tPaper: '../assets/tex/riso_paper.png', tGrain: '../assets/tex/riso_grain.png',
-  tCrt: '../assets/tex/crt_glass.png', tMetal: '../assets/tex/metal_brushed.png',
-};
-const loader = new THREE.TextureLoader();
-const uniforms = { uT: { value: 0 }, uRes: { value: new THREE.Vector2(1920, 1080) } };
-await Promise.all(Object.entries(files).map(async ([k, f]) => {
-  const tex = await loader.loadAsync(new URL(f, import.meta.url).href).catch(() => new THREE.DataTexture(new Uint8Array([40, 40, 40, 255]), 1, 1));
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.needsUpdate = true;
-  uniforms[k] = { value: tex };
-}));
-const scene = new THREE.Scene();
-const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ uniforms, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: frag }));
-quad.frustumCulled = false;
-scene.add(quad);
-const cam = new THREE.Camera();
-const render = (t) => { uniforms.uT.value = t; renderer.render(scene, cam); };
+const mode = new URLSearchParams(location.search).get('mode') ?? 'film';
+const u = (f) => new URL(`../assets/${f}`, import.meta.url).href;
+const stage = await createStage({
+  preserveDrawingBuffer: mode === 'render',
+  files: {
+    tA: u('logo/logo_a_mode.png'), tB: u('logo/logo_b_street.png'), tD: u('logo/logo_d_mono.png'),
+    tWall: u('tex/street_wall.png'), tPaper: u('tex/riso_paper.png'), tGrain: u('tex/riso_grain.png'), tCrt: u('tex/crt_glass.png'), tMetal: u('tex/metal_brushed.png'),
+  },
+});
+document.body.appendChild(stage.canvas);
 
 if (mode === 'render') {
-  window.__seek = render;
-  window.__showreel = { fps: 30, duration: DURATION, seek: (t) => (render(t), renderer.domElement.toDataURL('image/png')) };
+  window.__seek = stage.render;
+  window.__showreel = { fps: 30, duration: DURATION, seek: (t) => (stage.render(t), stage.canvas.toDataURL('image/png')) };
 } else {
   const t0 = performance.now();
-  renderer.setAnimationLoop(() => render(((performance.now() - t0) / 1000) % DURATION));
+  const loop = () => { stage.render(((performance.now() - t0) / 1000) % DURATION); requestAnimationFrame(loop); };
+  loop();
 }
