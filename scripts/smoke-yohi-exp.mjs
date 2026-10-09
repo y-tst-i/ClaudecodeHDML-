@@ -6,7 +6,8 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 const html = await readFile('out/yohi-exp/experience.html');
-const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(html); });
+const server = createServer((req, res) => { // 公開先（claude.ai）と同じく通信先を絞る。data: URL への fetch が止められる環境でも音が読めるかを確かめる
+  res.writeHead(200, { 'content-type': 'text/html', 'content-security-policy': "connect-src 'self'" }); res.end(html); });
 await new Promise((r) => server.listen(0, r));
 await mkdir('out/yohi-exp/smoke', { recursive: true });
 
@@ -20,8 +21,6 @@ await page.waitForFunction(() => window.__exp);
 const state = () => page.evaluate(() => window.__exp.state());
 const until = (fn, ms = 60000) => page.waitForFunction(fn, null, { timeout: ms, polling: 100 });
 const shot = (name) => page.screenshot({ path: `out/yohi-exp/smoke/${name}.png` });
-const step = (msg) => console.log(`✓ ${msg}`, JSON.stringify(await_state));
-let await_state;
 
 // C1：長押し（途中で離すと戻ることも確認）
 await page.mouse.move(640, 360);
@@ -76,9 +75,10 @@ await page.click('#replay');
 await until(() => window.__exp.state().room === 0 && !window.__exp.state().ended);
 console.log('✓ C5 最後まで進み、REPLAY で最初に戻る');
 
-// 音：効果音が読めているか（ヘッドレスでも decode できるか）
-const audio = await page.evaluate(() => typeof AudioContext);
-console.log(`audio: ${audio}`);
+// 音：効果音20個がすべて読めて、鳴る状態になっているか
+const audio = (await state()).audio;
+console.log('audio:', JSON.stringify(audio));
+if (audio.loaded !== 20 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
 await browser.close();
 server.close();
 if (errors.length) { console.error('エラー:', [...new Set(errors)]); process.exit(1); }

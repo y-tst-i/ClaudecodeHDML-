@@ -32,18 +32,33 @@ $('screen').appendChild(stage.canvas);
 const SFX_URLS = import.meta.glob('../assets/audio/sfx/*.mp3', { eager: true, query: '?url', import: 'default' });
 let ctx = null, master = null, muted = false, grooveT0 = 0;
 const buffers = {};
-function initAudio() {
-  if (ctx) return ctx.resume();
-  ctx = new AudioContext();
+// 埋め込み（data: URL）の音は fetch を使わず直接バイト列にする。
+// 公開先のページでは安全のための制限（CSP）で data: URL への fetch が止められることがあるため。
+function toArrayBuffer(url) {
+  if (!url.startsWith('data:')) return fetch(url).then((r) => r.arrayBuffer());
+  const bin = atob(url.slice(url.indexOf(',') + 1));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return Promise.resolve(bytes.buffer);
+}
+// 音の準備はページを開いた時点で始める（止まった状態の AudioContext でも decode はできる）。
+// 鳴らし始めは、ブラウザの決まりで最初の操作（長押しなど）のときに resume する。
+let audioError = '';
+function prepareAudio() {
+  try {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+  } catch (e) { audioError = String(e); return; }
   master = ctx.createGain();
   master.connect(ctx.destination);
   for (const [p, url] of Object.entries(SFX_URLS)) {
     const name = p.split('/').pop().replace('.mp3', '');
-    fetch(url).then((r) => r.arrayBuffer()).then((ab) => ctx.decodeAudioData(ab)).then((b) => { buffers[name] = b; }).catch(() => {});
+    toArrayBuffer(url).then((ab) => ctx.decodeAudioData(ab)).then((b) => { buffers[name] = b; }).catch((e) => { audioError = `${name}: ${e}`; });
   }
 }
+function initAudio() { if (ctx && ctx.state !== 'running') ctx.resume(); }
+prepareAudio();
 function sfx(name, { gain = 1, offset = 0, loop = false, at = 0 } = {}) {
-  if (!ctx || !buffers[name]) return null;
+  if (!ctx || !buffers[name]) return null;   // 止まった状態で予約しても、resume した瞬間に鳴る
   const src = ctx.createBufferSource();
   src.buffer = buffers[name];
   src.loop = loop;
@@ -60,7 +75,7 @@ let groove = null;
 function startGroove() { stopGroove(); groove = sfx('groove', { gain: 0.7, loop: true }); grooveT0 = ctx?.currentTime ?? 0; }
 function stopGroove() { groove?.stop(0.2); groove = null; }
 // 次の16分音符（ビートに音をハメる）
-function next16() { if (!ctx || !groove) return 0; const q = 0.125, d = ctx.currentTime - grooveT0; return grooveT0 + Math.ceil((d + 0.01) / q) * q; }
+function next16() { if (!ctx || ctx.state !== 'running' || !groove) return 0; const q = 0.125, d = ctx.currentTime - grooveT0; return grooveT0 + Math.ceil((d + 0.01) / q) * q; }
 
 // ---------- 状態 ----------
 let started = false, room = 0, lt = 0, auto = false, holding = false;
@@ -208,4 +223,4 @@ ui();
 requestAnimationFrame(frame);
 
 // 自動テスト用（scripts/smoke-yohi-exp.mjs）
-window.__exp = { state: () => ({ started, room, lt, auto, ended, slot, pressIdx }) };
+window.__exp = { state: () => ({ started, room, lt, auto, ended, slot, pressIdx, audio: { state: ctx?.state, loaded: Object.keys(buffers).length, error: audioError } }) };
