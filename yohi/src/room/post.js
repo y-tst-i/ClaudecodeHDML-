@@ -31,7 +31,8 @@ void main(){
 
 export function createPost(renderer, scene, camera, dustTex) {
   const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
   const bloom = new UnrealBloomPass(new THREE.Vector2(960, 540), 0.9, 0.5, 0.8);
   composer.addPass(bloom);
   const lens = new ShaderPass({
@@ -42,6 +43,8 @@ export function createPost(renderer, scene, camera, dustTex) {
   composer.addPass(lens);
   composer.addPass(new OutputPass());
   return {
+    // 場面を切り替える（仕上げの効果はそのまま共通で使う）
+    setView(scene, camera) { renderPass.scene = scene; renderPass.camera = camera; },
     setSize(w, h) { composer.setSize(w, h); lens.uniforms.uRes.value.set(w, h); },
     render({ t, hit, power }) {
       bloom.strength = 0.7 + power * 0.4 + hit * 0.5;
