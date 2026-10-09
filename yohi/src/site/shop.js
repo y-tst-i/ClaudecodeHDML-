@@ -223,7 +223,7 @@ export async function createShop(renderer, env) {
   // 紙の3つの位置：排紙台（最初）／機械の中／カメラの前（刷り上がりを見せる）
   const TRAY = { p: new THREE.Vector3(0, 1.08, 0.25), r: -Math.PI / 2 + 0.8 };
   const IN = { p: new THREE.Vector3(0, 1.12, -0.3), r: -Math.PI / 2 + 0.8 };
-  const SHOW = { p: new THREE.Vector3(0.0, 1.62, 1.75), r: -0.12 };
+  const SHOW = { p: new THREE.Vector3(0.0, 1.16, 0.42), r: -Math.PI / 2 + 1.05 };   // 手前の台の上で少し起き上がる（カメラの前までは来ない）
   const lerpPose = (A, B, k) => ({ p: A.p.clone().lerp(B.p, k), r: A.r + (B.r - A.r) * k });
 
   function draw(look) {
@@ -250,7 +250,7 @@ export async function createShop(renderer, env) {
     const burst = burstAt(), sb = burst === null ? -1 : t - burst;
     // 全開になったら、見せていた紙も吹き上がる紙に混ざって消える
     sheet.visible = sb < 0.15;
-    showLight.intensity = shown * 2.2 * (sb < 0 ? 1 : 0);
+    showLight.intensity = shown * 1.2 * (sb < 0 ? 1 : 0);
     // 版胴：1回ごとに1回転。全開のあとは高速で回り続ける
     let ang = 0;
     st.presses.forEach((p) => { ang += Math.PI * 2 * ease(Math.max(0, Math.min(1, (t - p) / PASS))); });
