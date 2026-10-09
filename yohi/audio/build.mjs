@@ -145,10 +145,76 @@ function tick(t0, g = 1, pan = 0) {
   play(t0, 0.02, (t) => Math.sin(2 * Math.PI * 3200 * t) * Math.exp(-t / 0.004), { gain: 0.18 * g, pan, rev: 0.15 });
 }
 
+// --- v5 で足した楽器（v4 の FB：ブーンが弱い／垂れの音／ポンポンがチープ／C4 の音ハメ） ---
+const saw = (ph) => 2 * (ph - Math.floor(ph + 0.5));
+// ブラウン管に電気が溜まっていく唸り：低いノコギリ波が音程・明るさ・音量ともに上がり、衝撃の直前で一瞬切れる
+function charge(t0, t1) {
+  for (const [det, pan] of [[0.996, -0.6], [1.004, 0.6], [1.0, 0]]) {
+    const f = biquad();
+    let ph = 0;
+    const d = t1 - t0;
+    play(t0, d, (t) => {
+      const k = t / d;
+      ph += (55 + 30 * k * k) * det / SR;
+      const x = saw(ph) + 0.5 * saw(ph * 2.01) + 0.3 * Math.sin(2 * Math.PI * ph * 0.5);
+      return Math.tanh(f(x, 'lp', 180 + 3200 * k * k, 1.4) * (1.5 + 3 * k)) * (0.15 + 0.85 * k * k) * (1 - range(t, d - 0.03, d));
+    }, { gain: 0.28, pan, rev: 0.1 });
+  }
+  // 高い「キーン」も一緒に上がる
+  play(t0 + 0.4, t1 - t0 - 0.43, (t) => { const k = t / (t1 - t0 - 0.43); return Math.sin(2 * Math.PI * (3000 + 5000 * k) * t) * k * k; }, { gain: 0.035, rev: 0.2 });
+}
+// 雫：本物の水滴は音程が「上がる」（泡の共鳴）。16分音符に乗せ、音階（Eマイナー・ペンタトニック）で降りていく
+function drop(t0, hz, g = 1, pan = 0) {
+  let ph = 0;
+  play(t0, 0.25, (t) => { ph += hz * (1 + 0.7 * Math.min(1, t / 0.035)) / SR; return Math.sin(2 * Math.PI * ph) * env(t, 0.0015, 0.06); }, { gain: 0.22 * g, pan, rev: 0.55 });
+}
+// 金属の鳴り：雑音のひと叩きを、ずれた倍音の共鳴フィルタに通す（正弦波を足すより「物」の音になる）
+function metal(t0, modes, g = 1, decay = 0.25, pan = 0) {
+  const fs = modes.map(() => biquad());
+  play(t0, decay * 3, (t) => {
+    const ex = noise() * Math.exp(-t / 0.004);
+    return modes.reduce((s, m, i) => s + fs[i](ex, 'bp', m, 40) * 9 * Math.exp(-t / (decay / (1 + i * 0.35))), 0);
+  }, { gain: g, pan, rev: 0.35 });
+}
+// 印刷機：ラッチの「カチャ」→ 重い本体の「ドスッ」（音程の動かない低音）→ 金属の鳴り → 空気の抜けるシュー
+function press(t0, g = 1) {
+  const fc = biquad(), fl = biquad(), fh = biquad();
+  play(t0 - 0.035, 0.03, (t) => fc(noise(), 'hp', 3000) * Math.exp(-t / 0.006), { gain: 0.5 * g, rev: 0.1 });
+  let ph = 0;
+  play(t0, 0.25, (t) => { ph += 58 / SR; return Math.tanh((Math.sin(2 * Math.PI * ph) * 1.2 + fl(noise(), 'lp', 220) * 3) * 2.5) * Math.exp(-t / 0.06); }, { gain: 0.75 * g, rev: 0.15 });
+  metal(t0, [187, 512, 941, 1488, 2203, 3317], 0.5 * g, 0.22 + 0.08 * g);
+  play(t0 + 0.06, 0.35, (t) => fh(noise(), 'bp', 3500, 0.8) * env(t, 0.02, 0.09), { gain: 0.18 * g, pan: 0.3, rev: 0.2 });
+}
+// C4 の音ハメ：顔が変わるたびに歪んだパワーコードの一撃（ベースも顔ごとに音程が変わる）
+function stab(t0, slot, g = 1) {
+  const roots = [82.41, 98.0, 110.0];          // E2 / G2 / A2
+  const r = roots[(slot * 2 + (slot >> 1)) % 3];
+  const f = biquad();
+  const phs = [0, 0, 0];
+  let hold = 0;
+  const crush = slot % 2 ? 7 : 1;               // 1回おきに荒い音（ビットクラッシュ）
+  play(t0, 0.24, (t) => {
+    const n = Math.round(t * SR);
+    if (n % crush === 0) {
+      const fr = [r, r * 1.5, r * 2];
+      let x = 0;
+      for (let i = 0; i < 3; i++) { phs[i] += fr[i] * crush / SR; x += saw(phs[i]); }
+      hold = Math.tanh(f(x, 'lp', 300 + 5000 * Math.exp(-t / 0.05), 1.2) * 3);
+    }
+    return hold * env(t, 0.002, 0.09);
+  }, { gain: 0.42 * g, pan: 0, rev: 0.15 });
+  sub(t0, 0.55 * g, 0.24, r / 2);
+}
+// 最後の拍で音がどんどん細かく刻まれる（スタッター）→ 次のカットへ
+function stutter(t0, t1, slot) {
+  for (let t = t0, i = 0; t < t1 - 0.01; t += 0.0625, i++) stab(t, slot, 0.5 + 0.5 * (t - t0) / (t1 - t0));
+}
+
 // ---------- 譜面（film.js と同じ時刻） ----------
 // C1 SIGNAL 0–3
 powerOn(0);
 hum(0, 3);
+charge(0.3, 2.0);
 for (let band = 7; band >= 0; band--) snap(0.2 + (7 - band) * 0.17 + 0.16, 0.8 + (7 - band) * 0.05, band % 2 ? -0.4 : 0.4);
 riser(2.0, 0.55, 0.8);
 impact(2.0);
@@ -162,18 +228,23 @@ clap(4.0); clap(5.0);
 sub(3.0, 0.6, 1.0); sub(4.0, 0.6, 1.0, 49);
 spray(3.2, 3.62, 1.0, -0.4); spray(3.85, 4.0, 0.9, 0); spray(4.0, 4.75, 1.0, 0.4);
 impact(5.0, 0.7);
-for (let k = 0; k < 9; k++) drip(5.1 + k * 0.1 + rnd() * 0.06, 0.6 + rnd() * 0.5, rnd() * 1.6 - 0.8);
+// 雫は16分音符に乗せて、音階で降りていく
+const scale = [1318.5, 1174.7, 987.8, 880.0, 784.0, 659.3, 587.3, 493.9];
+[1, 2, 4, 6, 7, 9, 11, 13].forEach((s16, k) => drop(5.0 + s16 * 0.0625, scale[k], 1 - k * 0.05, k % 2 ? 0.5 : -0.5));
 riser(6.0, 0.5, 0.7);
 // C3 MODE 6–9：紙送り → ガシャン、ガシャン、ガッシャン
 cutHit(6.0);
 paperFeed(6.0, 0.42);
-stamp(6.5, 0.8); stamp(7.0, 0.9); stamp(7.5, 1.3); sub(7.5, 0.8, 1.2);
+press(6.5, 1.2); press(7.0, 1.35); press(7.5, 1.8); sub(7.5, 0.6, 0.8);
+kick(8.0, 0.9); kick(8.5, 0.9); clap(8.5, 0.8);   // 揃ったあとはビートで次へ
 for (let b = 8.0; b < 9.0; b += 0.25) hat(b, 0.7);
 riser(9.0, 0.5, 0.8);
 // C4 GLITCH 9–12：いちばん密度が高い
 cutHit(9.0);
 for (let s = 0; s < 12; s++) glitch(9.0 + s * 0.25, s);
-for (let b = 9.0; b < 12.0; b += BEAT) { kick(b, 1.0); sub(b, 0.35, 0.45, b % 2 < 1 ? 41.2 : 55); }
+for (let s = 0; s < 10; s++) stab(9.0 + s * 0.25, s, s % 2 ? 0.8 : 1.0);   // 顔が変わる瞬間ごとに一撃
+stutter(11.5, 12.0, 10);
+for (let b = 9.0; b < 12.0; b += BEAT) kick(b, 1.25, 0.35);
 for (let b = 9.0; b < 12.0; b += 0.125) hat(b, b % 0.25 ? 0.5 : 0.9);
 clap(9.5); clap(10.5); clap(11.5);
 riser(12.0, 0.7, 1.0);
