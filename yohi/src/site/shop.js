@@ -7,9 +7,9 @@ import { sfx } from '../audio.js';
 // 場面3：夜の印刷工房。CLICK でレバーを引くたびに紙が機械を通って刷られる。
 // 1回目＝オレンジの版、2回目＝黒の版（ずれている）、3回目＝ガシャンと版が揃う → 機械が全開で回り、刷り上がりが一斉に舞う。
 // 絵は state（t, 押した時刻の一覧）だけで決まる。舞う紙はすべて1つの式で動かす。
-const PASS = 0.6;          // 1回刷るのにかかる秒
-const BURST_DELAY = 0.6;   // 3回目のあと、全開になるまで
-const N_FLY = 64;          // 舞う紙の枚数
+const PASS = 0.9;          // 1回刷るのにかかる秒（機械に入る → 刷る → カメラの前にせり上がって見せる）
+const BURST_DELAY = PASS + 0.7;   // 3回目のあと、揃ったポスターを見せてから全開に
+const N_FLY = 80;          // 舞う紙の枚数
 
 export async function createShop(renderer, env) {
   const loader = new THREE.TextureLoader();
@@ -67,7 +67,7 @@ export async function createShop(renderer, env) {
   const feedStack = add(new THREE.BoxGeometry(0.66, 0.12, 0.46), stackMats, 0, 1.7, -0.6, press);
   feedStack.rotation.x = 0.35;
   // 排紙台（手前）
-  const out = add(new THREE.BoxGeometry(1.1, 0.02, 0.75), steel, 0, 1.05, 0.98, press);
+  const out = add(new THREE.BoxGeometry(1.1, 0.02, 0.75), enamel, 0, 1.05, 0.98, press);   // 金属だとランプを鏡のように映して白く光る
   out.rotation.x = 0.8;
   // レバー（右）：オレンジの握り玉が、この場面の差し色
   const lever = new THREE.Group();
@@ -78,20 +78,26 @@ export async function createShop(renderer, env) {
   // 緑白の表示ランプ（刷った回数）
   const lamps = [0, 1, 2].map((i) => add(new THREE.SphereGeometry(0.035, 16, 10), new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xc7ffdb, emissiveIntensity: 0.1 }), -0.55 + i * 0.13, 1.4, 0.42, press));
 
-  // ---------- 刷られる紙：紙の上に、オレンジの版と黒の版（ずれる）を重ねる ----------
+  // ---------- 刷られる紙：けもののポスターを、オレンジの版 → 黒の版（ずれる）→ 揃う、の順に刷る ----------
+  // 元のポスター画像から「オレンジの所」「黒い所」を色で取り出して、版ごとに紙へ乗せる
   const ink = { uO: { value: 0 }, uK: { value: 0 }, uOff: { value: new THREE.Vector2() } };
-  const sheetMat = new THREE.MeshStandardMaterial({ map: tex.paper, roughness: 1.0, color: 0x8c8c8c });   // ランプの真下で白く飛ばないよう、紙は暗めに
+  const sheetMat = new THREE.MeshStandardMaterial({ map: tex.paper, roughness: 1.0, color: 0xc4c0b8 });
   sheetMat.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, ink, { uLogo: { value: tex.logoA }, uGrain: { value: tex.grain } });
-    sh.fragmentShader = 'uniform float uO, uK; uniform vec2 uOff; uniform sampler2D uLogo, uGrain;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-      vec2 lu = (vMapUv - 0.5) * vec2(1.06, 1.06) + 0.5;
+    Object.assign(sh.uniforms, ink, { uPrint: { value: tex.printA }, uGrain: { value: tex.grain } });
+    sh.fragmentShader = 'uniform float uO, uK; uniform vec2 uOff; uniform sampler2D uPrint, uGrain;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
       float g = texture2D(uGrain, vMapUv * 1.5).r;
-      float aO = texture2D(uLogo, lu + vec2(0.006, -0.004)).a * uO * (1.0 - g * 0.35);
-      float aK = texture2D(uLogo, lu + uOff).a * uK * (1.0 - smoothstep(0.55, 0.9, g) * 0.7);
-      diffuseColor.rgb *= mix(vec3(1.0), vec3(1.0, 0.28, 0.1), aO * 0.95);
-      diffuseColor.rgb *= mix(vec3(1.0), vec3(0.06), aK * 0.96);`);
+      vec3 pc = texture2D(uPrint, vMapUv).rgb;
+      float mO = smoothstep(0.1, 0.3, pc.r - pc.g) * uO * (1.0 - g * 0.3);
+      vec3 pk = texture2D(uPrint, vMapUv + uOff).rgb;
+      float mK = (1.0 - smoothstep(0.18, 0.42, dot(pk, vec3(0.3, 0.59, 0.11)))) * uK * (1.0 - smoothstep(0.6, 0.9, g) * 0.6);
+      diffuseColor.rgb *= mix(vec3(1.0), vec3(1.0, 0.3, 0.1), mO * 0.95);
+      diffuseColor.rgb *= mix(vec3(1.0), vec3(0.07), mK * 0.95);`);
   };
-  const sheet = add(new THREE.PlaneGeometry(0.96, 0.64), sheetMat);
+  const sheet = add(new THREE.PlaneGeometry(0.6, 0.9), sheetMat);
+  // せり上がった紙を正面から照らす光（ランプの円の外でも読めるように）
+  const showLight = new THREE.PointLight(0xfff0dc, 0, 3.5, 1.5);
+  showLight.position.set(0.2, 2.3, 3.0);
+  scene.add(showLight);
 
   // ---------- 刷り上がりが舞う（64枚。すべて同じ式で、i ごとに種だけ違う） ----------
   const flyMats = [tex.printA, tex.printB].map((map) => new THREE.MeshStandardMaterial({ map, roughness: 0.85, side: THREE.DoubleSide, color: 0xb8b8b8, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.12 }));
@@ -99,21 +105,58 @@ export async function createShop(renderer, env) {
   flies.forEach((f) => { f.frustumCulled = false; f.visible = false; scene.add(f); });
   const seeds = [...Array(N_FLY)].map((_, i) => { const r = mulberry32(300 + i); return [r(), r(), r(), r(), r(), r()]; });
   const dummy = new THREE.Object3D();
-  function placeFlies(s) {
+  // 全開のあと：機械から吹き上がって画面の上へ抜け、そのあとは上から舞い降り続ける（床に着く前に上へ戻る）。
+  // 触ると：クリック＝衝撃波ではじける／ドラッグ＝風で流れる／長押し＝渦を巻いて集まる（離すと散る）
+  const tmp = new THREE.Vector3();
+  function placeFlies(s, inter) {
+    const { clicks, windX, hold, holdP } = inter;
     for (let i = 0; i < N_FLY; i++) {
       const [a, b, c, d, e, f] = seeds[i];
-      const ti = s - a * 0.6;                              // 少しずつずれて飛び出す
       const mesh = flies[i % 2], idx = Math.floor(i / 2);
+      const ti = s - a * 0.7;
       if (ti <= 0) { dummy.scale.setScalar(0); dummy.updateMatrix(); mesh.setMatrixAt(idx, dummy.matrix); continue; }
-      // 上へ吹き上がり、空気抵抗でふわっと止まって、ひらひら落ちる（床で止まる）
-      const k = 2.2, up = (1 - Math.exp(-k * ti)) / k;
-      const x = (b - 0.5) * 6.0 * up + Math.sin(ti * (2 + c * 3) + i) * 0.25 * (1 - Math.exp(-ti));
-      const y = Math.max(0.01 + i * 0.0005, 1.3 + (2.6 + c * 1.6) * up - 0.35 * ti * ti * (0.6 + d * 0.5));
-      const z = -0.2 + (1.2 + e * 3.2) * up;
+      const L = 0.9 + b * 0.5;                                  // 吹き上がる時間
+      const rx = (b - 0.5) * 7.5, rz = -1.0 + e * 3.4;           // 舞う場所
+      const v = 0.45 + d * 0.35, TOP = 3.4, BOTTOM = 0.3, H = TOP - BOTTOM;
+      const h0 = (0.45 + 0.55 * f) * H;                         // 吹き上がって止まる高さ（ばらばら）→ そこから降りはじめる
+      let x, y, z, sc = 1, spin = 0;
+      if (ti < L) {
+        const k = ti / L, eo = 1 - (1 - k) ** 3;
+        x = rx * eo; y = 1.3 + (BOTTOM + h0 - 1.3) * eo; z = -0.3 + (rz + 0.3) * eo;
+        spin = ti * (6 + d * 6);
+        sc = Math.min(1, ti * 5);
+      } else {
+        const tau = ti - L;
+        y = BOTTOM + (((h0 - v * tau) % H) + H) % H;              // 下に着いたら上から出直す（画面の上のすぐ外）
+        x = rx + Math.sin(tau * (1.1 + c) + i) * 0.35;
+        z = rz + Math.cos(tau * (0.8 + e) + i) * 0.2;
+        spin = tau * (0.6 + e * 1.2);
+        sc = Math.min(1, (y - BOTTOM) / 0.3, (TOP - y) / 0.15 + 0.2);   // 下に着く直前に小さくなって、上から出直す
+      }
+      // 風（ドラッグ）：横に流れる。画面の外へ出たら反対側から戻る
+      x = ((x + windX * (0.6 + e * 0.8) + 4.2) % 8.4 + 8.4) % 8.4 - 4.2;
+      // 衝撃波（クリック）：押した所から外へはじける
+      for (const ck of clicks) {
+        const dt = s - ck.s;
+        if (dt < 0 || dt > 3) continue;
+        tmp.set(x - ck.p.x, y - ck.p.y, z - ck.p.z);
+        const dist = tmp.length() + 1e-3, w = Math.exp(-(dist * dist) / 1.2);
+        const push = 1.6 * (1 - Math.exp(-dt * 7)) * Math.exp(-dt * 0.9) * w;
+        x += tmp.x / dist * push; y += tmp.y / dist * push; z += tmp.z / dist * push * 0.5;
+        spin += w * (1 - Math.exp(-dt * 6)) * 8;
+      }
+      // 渦（長押し）：押している所を中心に回りながら集まる
+      if (hold > 0.001) {
+        const th = i * 2.399 + s * (2.2 + c);
+        const r = 0.35 + 0.95 * ((i * 0.618) % 1);
+        const vx = holdP.x + Math.cos(th) * r, vy = holdP.y + (((i * 0.37) % 1) - 0.5) * 1.8 + Math.sin(s * 2 + i) * 0.1, vz = holdP.z + Math.sin(th) * r * 0.6;
+        const hh = hold * hold * (3 - 2 * hold);
+        x += (vx - x) * hh; y += (vy - y) * hh; z += (vz - z) * hh;
+        spin += hold * s * 4;
+      }
       dummy.position.set(x, y, z);
-      const landed = y <= 0.02 + i * 0.0005;
-      dummy.rotation.set(landed ? -Math.PI / 2 : ti * (2 + d * 4) + i, landed ? 0 : ti * (1 + e * 3), landed ? f * 6 : Math.sin(ti * 4 + i) * 0.8);
-      dummy.scale.setScalar(Math.min(1, ti * 5));
+      dummy.rotation.set(Math.sin(spin * 1.3 + i) * 1.1, spin, Math.sin(spin * 0.9 + f * 6) * 0.6);
+      dummy.scale.setScalar(Math.max(0, sc));
       dummy.updateMatrix();
       mesh.setMatrixAt(idx, dummy.matrix);
     }
@@ -167,87 +210,139 @@ export async function createShop(renderer, env) {
   scene.add(rim);
 
   const camera = new THREE.PerspectiveCamera(36, 16 / 9, 0.1, 60);
-  const st = { t: 0, enterAt: 0, presses: [] };
-  let groove = null;
+  // 状態：押した時刻の一覧＋全開のあとの「触った記録」（クリック、風、長押し）
+  const st = { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, holdStart: 0, holdP: new THREE.Vector3(0, 1.4, 0.4), lastP: null, lastClick: -10 };
+  let groove = null, swirl = null;
   const burstAt = () => (st.presses.length >= 3 ? st.presses[2] + BURST_DELAY : null);
+  const raining = () => burstAt() !== null && st.t >= burstAt();
   const ease = (x) => x * x * (3 - 2 * x);
+  // 画面の位置 → 紙が舞っている面（z = 0.4）の上の点
+  const ray = new THREE.Raycaster(), plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -0.4);
+  const toWorld = (ndc) => { ray.setFromCamera(ndc, camera); const p = new THREE.Vector3(); return ray.ray.intersectPlane(plane, p) ? p : null; };
+
+  // 紙の3つの位置：排紙台（最初）／機械の中／カメラの前（刷り上がりを見せる）
+  const TRAY = { p: new THREE.Vector3(0, 1.08, 0.25), r: -Math.PI / 2 + 0.8 };
+  const IN = { p: new THREE.Vector3(0, 1.12, -0.3), r: -Math.PI / 2 + 0.8 };
+  const SHOW = { p: new THREE.Vector3(0.0, 1.62, 1.75), r: -0.12 };
+  const lerpPose = (A, B, k) => ({ p: A.p.clone().lerp(B.p, k), r: A.r + (B.r - A.r) * k });
 
   function draw(look) {
     const t = st.t;
-    // 紙：押すたびに機械の中へ入って、新しい版が刷られて出てくる
-    const P_OUT = new THREE.Vector3(0, 1.08, 1.0), P_IN = new THREE.Vector3(0, 1.12, 0.45);   // 機械の手前の排紙台 ⇔ 版胴の下
-    let pos = P_OUT.clone(), passK = 1;
+    // 紙：押すたびに機械へ入り、版が1つ刷られて、カメラの前へせり上がって見せる
+    let pose = TRAY, shown = 0;
     ink.uO.value = 0; ink.uK.value = 0;
     st.presses.forEach((p, i) => {
       const s = (t - p) / PASS;
       if (s < 0) return;
-      if (s < 1) { passK = s; const k = s < 0.45 ? s / 0.45 : 1 - (s - 0.45) / 0.55; pos = P_OUT.clone().lerp(P_IN, ease(Math.min(1, k))); }
-      if (s > 0.45) { if (i === 0) ink.uO.value = 1; else ink.uK.value = 1; }
+      const from = i === 0 ? TRAY : SHOW;
+      if (s < 0.3) pose = lerpPose(from, IN, ease(s / 0.3));
+      else if (s < 0.5) pose = IN;
+      else if (s < 0.68) pose = lerpPose(IN, TRAY, ease((s - 0.5) / 0.18));
+      else if (s < 1) pose = lerpPose(TRAY, SHOW, ease((s - 0.68) / 0.32));
+      else pose = SHOW;
+      if (s > 0.42) { if (i === 0) ink.uO.value = 1; else ink.uK.value = 1; }
+      shown = s >= 0.68 ? Math.min(1, (s - 0.68) / 0.32) : 0;
     });
-    const aligned = st.presses.length >= 3 && t - st.presses[2] > PASS * 0.45;
-    ink.uOff.value.set(aligned ? 0 : 0.035, aligned ? 0 : -0.028);
-    sheet.position.copy(pos).add(press.position);
-    sheet.rotation.set(-Math.PI / 2 + 0.8, 0, 0);   // カメラの方へ起こして、刷った版が読めるように
-    // 版胴：1回ごとに1回転。全開のあとは高速で回り続ける
+    const aligned = st.presses.length >= 3 && t - st.presses[2] > PASS * 0.42;
+    ink.uOff.value.set(aligned ? 0 : 0.03, aligned ? 0 : -0.022);
+    sheet.position.copy(pose.p);
+    sheet.rotation.set(pose.r, 0, 0);
     const burst = burstAt(), sb = burst === null ? -1 : t - burst;
+    // 全開になったら、見せていた紙も吹き上がる紙に混ざって消える
+    sheet.visible = sb < 0.15;
+    showLight.intensity = shown * 2.2 * (sb < 0 ? 1 : 0);
+    // 版胴：1回ごとに1回転。全開のあとは高速で回り続ける
     let ang = 0;
     st.presses.forEach((p) => { ang += Math.PI * 2 * ease(Math.max(0, Math.min(1, (t - p) / PASS))); });
     if (sb > 0) ang += sb * 18;
     drum.rotation.x = ang;
-    // レバー：引いて戻る
     let pull = 0;
     st.presses.forEach((p) => { const s = (t - p) / 0.35; if (s >= 0 && s < 1) pull = Math.sin(s * Math.PI); });
     lever.rotation.x = -pull * 0.9;
     lamps.forEach((l, i) => { l.material.emissiveIntensity = st.presses.length > i ? 2.2 : 0.1; });
-    // 全開：機械が震え、刷り上がりが一斉に舞う
-    const hit = sb < 0 ? 0 : Math.exp(-sb * 3.5) * 0.45;
+    const lastClickAgo = t - st.lastClick;
+    const hit = sb < 0 ? 0 : Math.exp(-sb * 3.5) * 0.45 + Math.exp(-lastClickAgo * 6) * 0.25;
     press.position.x = sb > 0 ? Math.sin(t * 70) * 0.012 * Math.min(1, sb * 3) : 0;
-    if (sb >= 0) placeFlies(sb); else flies.forEach((f) => { f.visible = false; });
-    hung.forEach((g, i) => { g.rotation.z = Math.sin(t * 0.8 + i * 1.7) * 0.04 + (sb > 0 ? Math.sin(t * 9 + i) * 0.08 * Math.exp(-sb) : 0); g.rotation.x = Math.sin(t * 0.6 + i) * 0.05; });
-    // けもの：拍に合わせて小さく弾む。刷るたびに震えて光り、全開で跳ねる
+    if (sb >= 0) placeFlies(sb, { clicks: st.clicks, windX: st.windX, hold: st.hold, holdP: st.holdP }); else flies.forEach((f) => { f.visible = false; });
+    hung.forEach((g, i) => { g.rotation.z = Math.sin(t * 0.8 + i * 1.7) * 0.04 + (sb > 0 ? Math.sin(t * 9 + i) * 0.08 * Math.exp(-sb) : 0) + st.windV * 0.03; g.rotation.x = Math.sin(t * 0.6 + i) * 0.05; });
+    // けもの：拍に合わせて弾む。刷るたびに光り、全開とクリックで跳ね、長押しで電気を溜める
     let spark = 0;
     st.presses.forEach((p) => { const s = t - p; if (s >= 0) spark = Math.max(spark, Math.exp(-s * 3)); });
-    const beat = Math.abs(Math.sin(t * Math.PI * 2));   // 120BPM
+    const beat = Math.abs(Math.sin(t * Math.PI * 2));
     holder.position.y = 1.55 + (sb < 0 ? beat * 0.02 : 0);
-    mon.update({ t, power: Math.min(1, spark * 0.8 + st.presses.length * 0.12), sinceImpact: sb, look });
-    // カメラ：入ってきたら少し引き、マウスで覗く。全開で揺れる
+    const since = sb < 0 ? -1 : Math.min(sb, lastClickAgo);
+    mon.update({ t, power: Math.min(1, spark * 0.8 + st.presses.length * 0.12 + st.hold * 0.8), sinceImpact: since, look });
     const intro = Math.min(1, (t - st.enterAt) / 1.0), e = 1 - (1 - intro) ** 3;
     const shake = hit * 0.05;
     camera.position.set(look.x * 0.35 + Math.sin(t * 59) * shake, 2.0 + look.y * 0.15 + Math.cos(t * 47) * shake, 3.3 + 1.2 * e);
     camera.lookAt(look.x * 0.1, 1.2, -0.6);
     const wipe = t - st.enterAt < 0.5 ? 0.5 + (t - st.enterAt) : 0;
-    return { hit, power: sb >= 0 ? 0.6 : st.presses.length / 3 * 0.4, wipe };
+    return { hit, power: sb >= 0 ? 0.6 + st.hold * 0.4 : st.presses.length / 3 * 0.4, wipe };
   }
 
   return {
-    scene, camera, hint: 'CLICK',
+    scene, camera,
+    get hint() { return raining() ? 'CLICK / DRAG / HOLD' : 'CLICK'; },
     setQuality() {},
-    reset() { st.t = 0; st.enterAt = 0; st.presses = []; },
+    reset() { Object.assign(st, { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, lastP: null, lastClick: -10 }); },
     enter() { sfx('feed', { gain: 1.2 }); groove?.stop(); groove = sfx('groove', { gain: 0.6, loop: true }); },
-    leave() { groove?.stop(0.2); groove = null; },
-    down() {
+    leave() { groove?.stop(0.2); groove = null; swirl?.stop(); swirl = null; },
+    down(ndc) {
+      if (raining()) {
+        // 衝撃波：押した所から紙がはじける
+        const p = toWorld(ndc) ?? st.holdP.clone();
+        st.clicks.push({ s: st.t - burstAt(), p });
+        if (st.clicks.length > 8) st.clicks.shift();
+        st.lastClick = st.t;
+        st.holding = true; st.holdStart = st.t; st.holdP.copy(p); st.lastP = p.clone();
+        sfx('hit', { gain: 0.55 }); sfx('snap', { gain: 0.8 });
+        return;
+      }
       const n = st.presses.length;
       if (n >= 3 || (n > 0 && st.t - st.presses[n - 1] < PASS)) return;   // 刷っている最中は受け付けない
       st.presses.push(st.t);
       sfx(`press${n + 1}`, { gain: 1.1 });
       sfx('feed', { gain: 0.6 });
     },
-    up() {},
-    move() {},
+    up() { st.holding = false; },
+    move(ndc) {
+      if (!raining() || !st.holding) return;
+      const p = toWorld(ndc);
+      if (!p) return;
+      // 風：ドラッグした向きに吹く
+      if (st.lastP) st.windV = Math.max(-6, Math.min(6, st.windV + (p.x - st.lastP.x) * 6));
+      st.lastP = p.clone();
+      st.holdP.copy(p);
+    },
     tick(dt) {
       const prev = st.t;
       st.t += dt;
       const b = burstAt();
-      if (b !== null && prev < b && st.t >= b) { sfx('final'); sfx('impact', { gain: 0.7 }); groove?.stop(0.4); groove = null; }
+      if (b !== null && prev < b && st.t >= b) { sfx('final'); sfx('impact', { gain: 0.7 }); }
+      // 風は吹いたあと弱まっていく。流された分は積み重なる
+      st.windV *= Math.exp(-dt * 1.4);
+      st.windX += st.windV * dt;
+      // 長押し（0.25秒以上）で渦になる。離すとほどける
+      const target = st.holding && st.t - st.holdStart > 0.25 && Math.abs(st.windV) < 1.5 ? 1 : 0;
+      const before = st.hold;
+      st.hold += (target - st.hold) * Math.min(1, dt * (target ? 2.2 : 3.5));
+      if (before < 0.15 && st.hold >= 0.15) { swirl?.stop(); swirl = sfx('charge', { gain: 0.6 }); }
+      if (before > 0.5 && st.hold <= 0.5 && !target) { swirl?.stop(0.1); swirl = null; sfx('drop', { gain: 0.7 }); }
       if (b !== null && st.t - b > 3.8) return 'end';
       return null;
     },
     progress() { return burstAt() === null ? st.presses.length / 3 : 0; },
-    busy() { const n = st.presses.length; return n >= 3 || (n > 0 && st.t - st.presses[n - 1] < PASS); },
+    busy() { if (raining()) return false; const n = st.presses.length; return n >= 3 || (n > 0 && st.t - st.presses[n - 1] < PASS); },
     draw,
-    state: () => ({ presses: st.presses.length, burst: burstAt() !== null && st.t >= burstAt() }),
-    // ?mode=render 用：0.8 / 1.6 / 2.4 秒に押す
-    script(t) { st.t = t; st.enterAt = -10; st.presses = [0.8, 1.6, 2.4].filter((p) => p <= t); },
+    state: () => ({ presses: st.presses.length, burst: raining(), hold: st.hold, clicks: st.clicks.length }),
+    // ?mode=render 用：0.8 / 1.8 / 2.8 秒に押す → 4.3 全開。6.0 に左でクリック、7.5〜 中央で長押し
+    script(t) {
+      this.reset();
+      st.t = t; st.enterAt = -10; st.presses = [0.8, 1.8, 2.8].filter((p) => p <= t);
+      const b = burstAt();
+      if (b !== null && t >= 6.0) { st.clicks = [{ s: 6.0 - b, p: new THREE.Vector3(-1.2, 1.6, 0.4) }]; st.lastClick = 6.0; }
+      if (t >= 7.5) { st.hold = Math.min(1, (t - 7.5) / 0.8); st.holdP.set(0.4, 1.5, 0.4); }
+    },
     dust: null,
   };
 }

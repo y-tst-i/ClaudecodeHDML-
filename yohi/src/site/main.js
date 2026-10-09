@@ -80,7 +80,7 @@ if (RENDER) {
   $('replay').addEventListener('click', () => { ended = false; $('replay').hidden = true; scenes[cur].leave?.(); scenes[0].reset(); use(0); ui(); });
   function ui() {
     $('count').textContent = `${String(cur + 1).padStart(2, '0')} / ${String(scenes.length).padStart(2, '0')}`;
-    $('hint').textContent = ended || scenes[cur].busy() ? '' : scenes[cur].hint;
+    $('hint').textContent = scenes[cur].busy() ? '' : scenes[cur].hint;   // 最後の場面は終わっても遊べる（REPLAY と並べて操作を出す）
   }
   ui();
 
