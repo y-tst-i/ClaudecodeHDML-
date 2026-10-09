@@ -2,6 +2,8 @@ import '@fontsource/jetbrains-mono/600.css';
 import * as THREE from 'three';
 import { createWorld } from './world.js';
 import { createPost } from './post.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { createCreature } from '../chara/creature.js';
 import { prepareAudio, resumeAudio, sfx, setMuted, audioState } from '../audio.js';
 
 // ブラウン管の部屋：長押しで電気が溜まり、テレビが主役から順に点いていく。溜めきると全部が光る。
@@ -31,6 +33,22 @@ const world = await createWorld(renderer, {
   smudge: new URL('../../assets/room/glass_smudge.jpg', import.meta.url).href,
   dust: new URL('../../assets/room/dust_scratch.jpg', import.meta.url).href,
 });
+// 電気のけもの：主役のテレビの上に座っている。部屋が暗いので、映り込み用の環境光は弱く
+const pmrem = new THREE.PMREMGenerator(renderer);
+const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const mon = createCreature({ envMap: env, glowScale: 0.4 });
+// 置き場所は外側の入れ物で決める（キャラ自身の position.y は跳ねる動きに使うため）
+const monHolder = new THREE.Group();
+monHolder.add(mon.group);
+monHolder.scale.setScalar(0.74);
+monHolder.position.set(0.32, 1.12, 1.0);
+monHolder.rotation.y = -0.25;
+mon.group.traverse((o) => { if (o.material?.envMapIntensity !== undefined) o.material.envMapIntensity *= 0.35; });
+world.scene.add(monHolder);
+// テレビの画面の光が下からけものを照らす
+const monLight = new THREE.PointLight(0xc8ffe0, 0, 2.2, 1.5);
+monLight.position.set(0.1, 1.05, 1.75);
+world.scene.add(monLight);
 const camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.1, 60);
 const post = createPost(renderer, world.scene, camera, world.tex.dust);
 
@@ -43,6 +61,8 @@ function placeCamera(t, look, hit, power) {
 }
 function draw(t, power, sinceImpact, look = { x: 0, y: 0 }) {
   const { hit } = world.update({ t, power, sinceImpact });
+  mon.update({ t, power, sinceImpact, look });
+  monLight.intensity = 0.15 + Math.min(1, sinceImpact >= 0 ? 1 : power) * 0.35 + hit * 1.2;
   placeCamera(t, look, hit, power);
   post.render({ t, hit, power });
 }
