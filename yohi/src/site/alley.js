@@ -8,7 +8,8 @@ import { sfx } from '../audio.js';
 // 塗った跡は「吹いた点の一覧」から描く（点の i 番目の飛沫は種 i の乱数で決まる＝同じ操作なら同じ絵）。
 const PAINT_W = 2.7, PAINT_H = 1.8;            // 塗れる面（ロゴBと同じ 3:2）
 const GRID_W = 96, GRID_H = 64;                // 塗れた量を数えるための升目
-const COMPLETE_AT = 0.33;                      // ロゴの面積の何割を塗ったら完成するか
+const COMPLETE_AT = 0.33;
+const EXIT_AT = 3.0;                           // 完成から何秒で紙が横切りはじめるか（0.5秒で覆う → 次の場面）                      // ロゴの面積の何割を塗ったら完成するか
 
 export async function createAlley(renderer, env) {
   const loader = new THREE.TextureLoader();
@@ -236,7 +237,8 @@ export async function createAlley(renderer, env) {
     camera.lookAt(look.x * 0.1, 1.0, -1);
     // 入ってきた瞬間：前の場面から続くブラウン管の画素が縮んで、路地が現れる
     const mask = Math.max(0, 1 - (t - st.enterAt) / 0.6);
-    return { hit: Math.max(hit, (1 - intro) * 0.3), power: Math.min(1, st.coverage / COMPLETE_AT) * 0.5, mask: mask * mask };
+    const wipe = since < EXIT_AT ? 0 : Math.min(0.5, (since - EXIT_AT) / 1.0);
+    return { hit: Math.max(hit, (1 - intro) * 0.3), power: Math.min(1, st.coverage / COMPLETE_AT) * 0.5, mask: mask * mask, wipe };
   }
 
   return {
@@ -263,7 +265,7 @@ export async function createAlley(renderer, env) {
       st.speed *= Math.pow(0.02, dt);
       if (sprayLoop) sprayLoop.gain.gain.value = st.holding && st.completeAt === null ? 0.25 + st.speed * 0.75 : 0;
       if (st.completeAt === null && st.coverage >= COMPLETE_AT) { st.completeAt = st.t; sfx('final'); sfx('rattle'); sprayLoop?.stop(0.05); }
-      if (st.completeAt !== null && st.t - st.completeAt > 3.2) return 'end';
+      if (st.completeAt !== null && st.t - st.completeAt > EXIT_AT + 0.5) return 'exit';
       return null;
     },
     progress() { return st.completeAt === null ? Math.min(1, st.coverage / COMPLETE_AT) : 0; },

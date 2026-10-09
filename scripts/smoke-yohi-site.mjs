@@ -1,4 +1,4 @@
-// YOHI サイト（部屋 → 路地）の通しテスト。公開先と同じ CSP をかけて、最後まで遊べるか・音が読めるか。
+// YOHI サイト（部屋 → 路地 → 印刷工房）の通しテスト。公開先と同じ CSP をかけて、最後まで遊べるか・音が読めるか。
 //   npx vite build --config yohi/vite.site.config.js && node scripts/smoke-yohi-site.mjs
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -42,6 +42,20 @@ const s = await state();
 console.log(`✓ 路地：塗った量 ${(s.coverage * 100).toFixed(0)}%（点 ${s.points}）`);
 await until(() => window.__site.state().completed);
 console.log('✓ 路地：タグが完成');
+await until(() => window.__site.state().scene === 2);
+console.log('✓ 路地 → 印刷工房へ切り替わる（紙が横切る）');
+await shot('shop-enter');
+
+// 場面3：レバーを3回引く（刷っている最中は受け付けないので、1回ずつ待つ）
+for (let k = 1; k <= 3; k++) {
+  await until(() => !window.__site.state().busy, 60000).catch(() => {});
+  await page.mouse.click(640, 360);
+  await page.waitForFunction((n) => window.__site.state().presses >= n, k, { timeout: 60000, polling: 200 });
+}
+console.log('✓ 印刷工房：3回刷った');
+await until(() => window.__site.state().burst);
+console.log('✓ 印刷工房：全開で刷り上がりが舞う');
+await shot('shop-burst');
 await until(() => !document.getElementById('replay').hidden, 120000);
 await shot('alley-done');
 await page.click('#replay');

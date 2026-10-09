@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { createPost } from '../room/post.js';
 import { createRoom } from './room.js';
 import { createAlley } from './alley.js';
+import { createShop } from './shop.js';
 import { prepareAudio, resumeAudio, sfx, setMuted, audioState } from '../audio.js';
 
 // YOHI の体験型サイト（複数の場面）。場面1：ブラウン管の部屋 → 場面2：夜の路地 → 部屋へ戻る。
@@ -19,8 +20,8 @@ renderer.setPixelRatio(1);
 $('screen').appendChild(renderer.domElement);
 const env = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 
-const scenes = [await createRoom(renderer, env), await createAlley(renderer, env)];
-let cur = params.get('scene') === 'alley' ? 1 : 0;
+const scenes = [await createRoom(renderer, env), await createAlley(renderer, env), await createShop(renderer, env)];
+let cur = Math.max(0, ['room', 'alley', 'shop'].indexOf(params.get('scene') ?? 'room'));
 const post = createPost(renderer, scenes[0].scene, scenes[0].camera, scenes[0].dust);
 const use = (i) => { cur = i; post.setView(scenes[i].scene, scenes[i].camera); };
 use(cur);
@@ -37,8 +38,8 @@ function fit() {
 }
 fit();
 function render(t, look) {
-  const { hit, power, mask = 0 } = scenes[cur].draw(look);
-  post.render({ t, hit, power, mask });
+  const { hit, power, mask = 0, wipe = 0 } = scenes[cur].draw(look);
+  post.render({ t, hit, power, mask, wipe });
 }
 
 if (RENDER) {
@@ -76,7 +77,7 @@ if (RENDER) {
   addEventListener('keydown', (e) => { if (e.code === 'Space' && !e.repeat && e.target.tagName !== 'BUTTON') { e.preventDefault(); resumeAudio(); started = true; scenes[cur].down(new THREE.Vector2(0, 0)); } });
   addEventListener('keyup', (e) => { if (e.code === 'Space') up(); });
   $('sound').addEventListener('click', () => { muted = !muted; setMuted(muted); $('sound').textContent = muted ? 'SOUND OFF' : 'SOUND ON'; });
-  $('replay').addEventListener('click', () => { ended = false; $('replay').hidden = true; scenes[1].leave?.(); scenes[0].reset(); use(0); ui(); });
+  $('replay').addEventListener('click', () => { ended = false; $('replay').hidden = true; scenes[cur].leave?.(); scenes[0].reset(); use(0); ui(); });
   function ui() {
     $('count').textContent = `${String(cur + 1).padStart(2, '0')} / ${String(scenes.length).padStart(2, '0')}`;
     $('hint').textContent = ended || scenes[cur].busy() ? '' : scenes[cur].hint;
@@ -104,7 +105,8 @@ if (RENDER) {
     measure(raw, now);
     t += dt;
     const ev = started ? scenes[cur].tick(dt) : null;
-    if (ev === 'exit') { scenes[1].reset(); use(1); scenes[1].enter(); sfx('cut', { gain: 1.2 }); }
+    // 'exit'：次の場面へ（前の場面の音を止め、次の場面を最初から始める）
+    if (ev === 'exit' && cur + 1 < scenes.length) { scenes[cur].leave?.(); const n = cur + 1; scenes[n].reset(); use(n); scenes[n].enter?.(); sfx('cut', { gain: 1.2 }); }
     if (ev === 'end' && !ended) { ended = true; $('replay').hidden = false; }
     look.x += (lookTarget.x - look.x) * Math.min(1, dt * 3);
     look.y += (lookTarget.y - look.y) * Math.min(1, dt * 3);
@@ -114,5 +116,5 @@ if (RENDER) {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
-  window.__site = { state: () => ({ started, scene: cur, ended, ...scenes[cur].state(), quality: QUALITY[quality].name, audio: audioState() }) };
+  window.__site = { state: () => ({ started, scene: cur, ended, busy: scenes[cur].busy(), ...scenes[cur].state(), quality: QUALITY[quality].name, audio: audioState() }) };
 }

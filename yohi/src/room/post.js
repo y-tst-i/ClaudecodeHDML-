@@ -8,7 +8,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 // 全場面で共通の仕上げ：光のにじみ（ブルーム）→ レンズ（色ずれ・周辺減光・埃と傷・フィルムの粒）→ 表示用の色へ
 const lensFrag = /* glsl */ `
 uniform sampler2D tDiffuse, uDust;
-uniform float uT, uHit, uMask;   // uMask 0..1：画面に吸い込まれて、ブラウン管の画素が視界を埋める
+uniform float uT, uHit, uMask, uWipe;   // uWipe 0..1：紙が横切る（0.5 で画面全体を覆う）   // uMask 0..1：画面に吸い込まれて、ブラウン管の画素が視界を埋める
 uniform vec2 uRes;
 varying vec2 vUv;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -42,6 +42,14 @@ void main(){
     col = mix(col, masked, smoothstep(0.0, 0.35, uMask));
     col += vec3(0.6, 0.85, 0.7) * smoothstep(0.75, 1.0, uMask) * 0.9;   // 最後は緑白に満ちる
   }
+  if (uWipe > 0.0 && uWipe < 1.0) {
+    float lead = mix(-0.15, 2.45, uWipe);
+    float tear = (hash(vec2(floor(vUv.y * 90.0), 3.0)) - 0.5) * 0.03 + sin(vUv.y * 23.0) * 0.012;
+    float inPaper = step(lead - 1.3 + tear, vUv.x) * step(vUv.x, lead + tear);
+    vec3 paper = vec3(0.86, 0.82, 0.74) * (0.92 + 0.08 * hash(floor(vUv * uRes * 0.5)));
+    float shade = smoothstep(0.0, 0.03, lead + tear - vUv.x) * smoothstep(0.0, 0.03, vUv.x - (lead - 1.3 + tear));
+    col = mix(col * (1.0 - 0.5 * step(vUv.x, lead + tear + 0.02) * step(lead + tear - 0.0, vUv.x)), paper * (0.85 + 0.15 * shade), inPaper);
+  }
   gl_FragColor = vec4(max(col, 0.0), 1.0);
 }`;
 
@@ -52,7 +60,7 @@ export function createPost(renderer, scene, camera, dustTex) {
   const bloom = new UnrealBloomPass(new THREE.Vector2(960, 540), 0.9, 0.5, 0.8);
   composer.addPass(bloom);
   const lens = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, uDust: { value: dustTex }, uT: { value: 0 }, uHit: { value: 0 }, uMask: { value: 0 }, uRes: { value: new THREE.Vector2(1920, 1080) } },
+    uniforms: { tDiffuse: { value: null }, uDust: { value: dustTex }, uT: { value: 0 }, uHit: { value: 0 }, uMask: { value: 0 }, uWipe: { value: 0 }, uRes: { value: new THREE.Vector2(1920, 1080) } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: lensFrag,
   });
@@ -62,8 +70,9 @@ export function createPost(renderer, scene, camera, dustTex) {
     // 場面を切り替える（仕上げの効果はそのまま共通で使う）
     setView(scene, camera) { renderPass.scene = scene; renderPass.camera = camera; },
     setSize(w, h) { composer.setSize(w, h); lens.uniforms.uRes.value.set(w, h); },
-    render({ t, hit, power, mask = 0 }) {
+    render({ t, hit, power, mask = 0, wipe = 0 }) {
       lens.uniforms.uMask.value = mask;
+      lens.uniforms.uWipe.value = wipe;
       bloom.strength = 0.7 + power * 0.4 + hit * 0.5;
       lens.uniforms.uT.value = t;
       lens.uniforms.uHit.value = hit;
