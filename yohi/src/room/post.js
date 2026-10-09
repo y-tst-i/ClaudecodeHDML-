@@ -25,14 +25,14 @@ void main(){
   col += (hash(vUv * uRes + f * 13.1) - 0.5) * 0.035;
   vec2 du = vUv * vec2(uRes.x / uRes.y, 1.0) * 0.6 + vec2(hash(vec2(floor(uT * 2.0), 1.0)), hash(vec2(floor(uT * 2.0), 2.0)));
   col += texture2D(uDust, du).r * 0.05;                  // レンズの埃と傷（半拍ごとに位置が変わる）
-  col += vec3(0.9, 1.0, 0.95) * uHit * 0.25;
+  col += vec3(0.9, 1.0, 0.95) * uHit * 0.08;
   gl_FragColor = vec4(max(col, 0.0), 1.0);
 }`;
 
 export function createPost(renderer, scene, camera, dustTex) {
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(960, 540), 0.9, 0.55, 0.62);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(960, 540), 0.9, 0.5, 0.8);
   composer.addPass(bloom);
   const lens = new ShaderPass({
     uniforms: { tDiffuse: { value: null }, uDust: { value: dustTex }, uT: { value: 0 }, uHit: { value: 0 }, uRes: { value: new THREE.Vector2(1920, 1080) } },
@@ -44,7 +44,7 @@ export function createPost(renderer, scene, camera, dustTex) {
   return {
     setSize(w, h) { composer.setSize(w, h); lens.uniforms.uRes.value.set(w, h); },
     render({ t, hit, power }) {
-      bloom.strength = 0.7 + power * 0.4 + hit * 2.2;
+      bloom.strength = 0.7 + power * 0.4 + hit * 0.5;
       lens.uniforms.uT.value = t;
       lens.uniforms.uHit.value = hit;
       composer.render();
