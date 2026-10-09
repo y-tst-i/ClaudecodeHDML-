@@ -3,12 +3,14 @@ import { DURATION } from './film.js';
 
 // ?mode=render のとき window.__seek / __showreel を出す（scripts/render.mjs・shoot.mjs 用）
 const mode = new URLSearchParams(location.search).get('mode') ?? 'film';
-const u = (f) => new URL(`../assets/${f}`, import.meta.url).href;
+// 映像の書き出しは劣化のない PNG（new URL には文字列をそのまま書く：変数を混ぜると Vite が解決できない）
 const stage = await createStage({
   preserveDrawingBuffer: mode === 'render',
   files: {
-    tA: u('logo/logo_a_mode.png'), tB: u('logo/logo_b_street.png'), tD: u('logo/logo_d_mono.png'),
-    tWall: u('tex/street_wall.png'), tPaper: u('tex/riso_paper.png'), tGrain: u('tex/riso_grain.png'), tCrt: u('tex/crt_glass.png'), tMetal: u('tex/metal_brushed.png'),
+    tA: new URL('../assets/logo/logo_a_mode.png', import.meta.url).href, tB: new URL('../assets/logo/logo_b_street.png', import.meta.url).href,
+    tD: new URL('../assets/logo/logo_d_mono.png', import.meta.url).href, tWall: new URL('../assets/tex/street_wall.png', import.meta.url).href,
+    tPaper: new URL('../assets/tex/riso_paper.png', import.meta.url).href, tGrain: new URL('../assets/tex/riso_grain.png', import.meta.url).href,
+    tCrt: new URL('../assets/tex/crt_glass.png', import.meta.url).href, tMetal: new URL('../assets/tex/metal_brushed.png', import.meta.url).href,
   },
 });
 document.body.appendChild(stage.canvas);
