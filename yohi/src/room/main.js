@@ -93,7 +93,9 @@ if (RENDER) {
   const measure = (raw, now) => {
     if (now < settleUntil || quality >= QUALITY.length - 1) return;
     samples.push(raw);
-    if (samples.length < 45) return;
+    // 45コマ集まるか、1.5秒たったら判定（遅いパソコンほど早く軽くなる）
+    const spent = samples.reduce((a, b) => a + b, 0);
+    if (samples.length < 45 && !(spent > 1.5 && samples.length >= 4)) return;
     const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
     samples = [];
     if (avg > 0.028) { quality++; fit(); world.setQuality(quality); showQuality(); settleUntil = now + 1500; }

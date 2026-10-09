@@ -42,7 +42,7 @@ console.log('✓ REPLAY で暗い部屋に戻る');
 // GPU の無いこの環境は遅いので、自動の画質調整で HIGH から下がっているはず
 const q = (await state()).quality;
 console.log(`✓ 自動の画質調整: ${q}`);
-if (q === 'HIGH') throw new Error('遅いのに画質が下がっていない');
+if (q !== 'LOW') throw new Error(`1コマ1秒の環境なのに LOW まで下がっていない: ${q}`);
 const audio = (await state()).audio;
 console.log('audio:', JSON.stringify(audio));
 if (audio.loaded !== 20 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
