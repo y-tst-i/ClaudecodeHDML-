@@ -23,10 +23,11 @@ await page.mouse.move(640, 360);
 await page.mouse.down();
 await until(() => window.__room.state().power > 0.4);
 await page.mouse.up();
+// GPU の無い環境では1コマが1秒近くかかるので、決まった時間ではなく「実際に下がるまで」待つ
 const a = await state();
-await page.waitForTimeout(800);
-const b = await state();
-if (b.power >= a.power) throw new Error(`離しても抜けない ${JSON.stringify({ a, b })}`);
+const t0 = Date.now();
+await page.waitForFunction((p) => window.__room.state().power < p - 0.05, a.power, { timeout: 120000, polling: 100 }).catch(() => { throw new Error(`離しても抜けない ${JSON.stringify(a)}`); });
+console.log(`  （この環境での1コマ ≒ ${await page.evaluate(() => new Promise((r) => { const s = performance.now(); requestAnimationFrame(() => requestAnimationFrame(() => r(Math.round((performance.now() - s) / 2)))); }))}ms、抜けるまで ${Date.now() - t0}ms）`);
 console.log('✓ 長押しで溜まり、離すと抜ける');
 await page.screenshot({ path: 'out/yohi-room/smoke/half.png' });
 await page.mouse.down();
