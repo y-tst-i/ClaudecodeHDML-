@@ -22,7 +22,8 @@
       #sound { position: absolute; right: 24px; top: 16px; }
       #replay { position: absolute; left: 50%; bottom: 32px; transform: translateX(-50%); }
       #replay[hidden] { display: none; }
-      @media (max-width: 600px) { .tl, .bl { left: 16px; } #sound { right: 16px; } }
+      .br { position: absolute; right: 24px; bottom: 24px; opacity: 0.6; }
+      @media (max-width: 600px) { .tl, .bl { left: 16px; } #sound, .br { right: 16px; } }
     </style>
   </head>
   <body>
@@ -33,6 +34,7 @@
       
       <div class="hintwrap"><div id="hint">HOLD</div><div class="track"><div id="bar"></div></div></div>
       <button id="replay" type="button" hidden>REPLAY</button>
+      <div class="br" id="quality" title="パソコンの速さに合わせて自動で画質を調整しています"></div>
     </div>
     <script type="module" src="./src/room/main.js"></script>
   </body>

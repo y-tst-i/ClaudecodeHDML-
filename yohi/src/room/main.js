@@ -46,8 +46,12 @@ function draw(t, power, sinceImpact, look = { x: 0, y: 0 }) {
   placeCamera(t, look, hit, power);
   post.render({ t, hit, power });
 }
+// 画質の段階（パソコンの速さを測って自動で下げる）：描く解像度 → 床の映り込み
+const QUALITY = [{ name: 'HIGH', scale: 1, dpr: 2 }, { name: 'MID', scale: 0.72, dpr: 1.25 }, { name: 'LOW', scale: 0.5, dpr: 1 }];
+let quality = 0;
 function fit() {
-  const w = RENDER ? 1920 : Math.min(innerWidth, innerHeight * 16 / 9), dpr = RENDER ? 1 : Math.min(devicePixelRatio || 1, 2);
+  const Q = QUALITY[quality];
+  const w = RENDER ? 1920 : Math.min(innerWidth, innerHeight * 16 / 9) * Q.scale, dpr = RENDER ? 1 : Math.min(devicePixelRatio || 1, Q.dpr);
   const pw = Math.min(1920, Math.round(w * dpr)), ph = Math.round(pw * 9 / 16);
   renderer.setSize(pw, ph, false);
   post.setSize(pw, ph);
@@ -82,10 +86,24 @@ if (RENDER) {
   $('sound').addEventListener('click', () => { muted = !muted; setMuted(muted); $('sound').textContent = muted ? 'SOUND OFF' : 'SOUND ON'; });
   $('replay').addEventListener('click', () => { power = 0; impactAt = null; $('replay').hidden = true; $('hint').textContent = 'HOLD'; });
 
+  // 1コマの時間を測り、遅ければ1段ずつ軽くする（上げ直しはしない：行ったり来たりでガタつかないように）
+  const showQuality = () => { $('quality').textContent = QUALITY[quality].name; };
+  showQuality();
+  let samples = [], settleUntil = performance.now() + 1500;
+  const measure = (raw, now) => {
+    if (now < settleUntil || quality >= QUALITY.length - 1) return;
+    samples.push(raw);
+    if (samples.length < 45) return;
+    const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+    samples = [];
+    if (avg > 0.028) { quality++; fit(); world.setQuality(quality); showQuality(); settleUntil = now + 1500; }
+  };
   let last = performance.now();
   const frame = (now) => {
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const raw = (now - last) / 1000;
+    const dt = Math.min(0.05, raw);
     last = now;
+    measure(raw, now);
     t += dt;
     const prev = power;
     if (impactAt === null) {
@@ -108,5 +126,5 @@ if (RENDER) {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
-  window.__room = { state: () => ({ started, power, impacted: impactAt !== null, audio: audioState() }) };
+  window.__room = { state: () => ({ started, power, impacted: impactAt !== null, quality: QUALITY[quality].name, audio: audioState() }) };
 }

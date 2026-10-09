@@ -256,6 +256,8 @@ export async function createWorld(renderer, files) {
 
   return {
     scene, tvs, tex,
+    // 画質の段階：2（LOW）では床の映り込み（場面をもう1回描く重い処理）を止める
+    setQuality(q) { wet.visible = q < 2; },
     // 絵の状態を決める。power 0..1（溜まり具合）、sinceImpact（衝撃からの秒。衝撃前は負）
     update({ t, power, sinceImpact }) {
       const impacted = sinceImpact >= 0;
