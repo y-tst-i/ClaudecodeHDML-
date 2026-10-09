@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>YOHI IWAKIRI — CRT Room</title>
+    <style>
+      /* 絵は過剰に、UIは最小限に。英字の字間0・8の倍数・ボタン高さ32px・角丸なし・ホバーは色だけ */
+      :root { --fg: #fff; --bg: #000; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+      html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+      #screen { position: fixed; inset: 0; display: grid; place-items: center; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+      #screen canvas { width: min(100vw, calc(100vh * 16 / 9)); height: auto; aspect-ratio: 16 / 9; display: block; }
+      .ui { position: fixed; inset: 0; pointer-events: none; color: var(--fg); font: 600 12px/16px var(--mono); letter-spacing: 0; mix-blend-mode: difference; }
+      .tl { position: absolute; left: 24px; top: 24px; }
+      .bl { position: absolute; left: 24px; bottom: 24px; font-variant-numeric: tabular-nums; }
+      .hintwrap { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; }
+      #hint { min-height: 16px; }
+      .track { width: 64px; height: 1px; background: rgba(255, 255, 255, 0.3); }
+      #bar { height: 1px; background: var(--fg); transform-origin: 0 50%; transform: scaleX(0); }
+      button { pointer-events: auto; height: 32px; padding: 0 16px; border: 1px solid var(--fg); border-radius: 0; background: transparent; color: var(--fg); font: inherit; letter-spacing: 0; cursor: pointer; transition: background-color 0.15s, color 0.15s; }
+      button:hover, button:focus-visible { background: var(--fg); color: var(--bg); outline: none; }
+      #sound { position: absolute; right: 24px; top: 16px; }
+      #replay { position: absolute; left: 50%; bottom: 32px; transform: translateX(-50%); }
+      #replay[hidden] { display: none; }
+      @media (max-width: 600px) { .tl, .bl { left: 16px; } #sound { right: 16px; } }
+    </style>
+  </head>
+  <body>
+    <div id="screen" aria-label="ブラウン管テレビが積み上がった部屋。長押しで電気が溜まり、テレビが順に点きます"></div>
+    <div class="ui">
+      <div class="tl">YOHI IWAKIRI</div>
+      <button id="sound" type="button" aria-pressed="true">SOUND ON</button>
+      
+      <div class="hintwrap"><div id="hint">HOLD</div><div class="track"><div id="bar"></div></div></div>
+      <button id="replay" type="button" hidden>REPLAY</button>
+    </div>
+    <script type="module" src="./src/room/main.js"></script>
+  </body>
+</html>
