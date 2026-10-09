@@ -11,6 +11,7 @@
 
 ## 絶対ルール
 - ユーザーへの返答は必ず日本語で書く（英語の返答は禁止）。
+- Codex への分業は `scripts/codex.sh`（code=gpt-6.1-sol/high、review=gpt-6.1-sol/medium）と codex-images スキル（gpt-6.1-sol/medium）だけを使う。モデルと推論の深さはユーザーが決めたもの。変えるときは必ず先に確認する。Codex の成果物はそのまま使わず、撮って確かめてから入れる。
 - 描画は時間 t の純関数にする。`Math.random()` / `Date.now()` / 前フレームの状態に依存しない（乱数は `mulberry32(CONFIG.seed)`）。これが崩れると映像書き出しとWebで絵がズレる。
 - 変更したら必ず `npm run probe -- <確認したい秒数...>` で画像を出し、`out/probe/sheet.png` を自分で見てから報告する。
 - カット表のFB対応後は `npm run cuts` でカット表を更新する。

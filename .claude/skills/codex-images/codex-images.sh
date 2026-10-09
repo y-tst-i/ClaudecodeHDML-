@@ -62,7 +62,7 @@ case "${1:-}" in
 - 添付の参考画像があれば、その人物・キャラ・画風・配色に合わせる
 - コードを書いたり、ほかのファイルを作ったりしない。最後に、保存したファイル名の一覧だけを書く
 RULES
-    } | codex exec --skip-git-repo-check --sandbox workspace-write -C "$out" ${refs[@]+"${refs[@]}"} -
+    } | codex exec -m "${CODEX_MODEL:-gpt-6.1-sol}" -c model_reasoning_effort="\"${CODEX_EFFORT:-medium}\"" --skip-git-repo-check --sandbox workspace-write -C "$out" ${refs[@]+"${refs[@]}"} -
     echo "---- 作った画像 ----"
     find "$out" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.webp' \) -newer "$prompt" -printf '%f\t%s bytes\n' | sort
     ;;
