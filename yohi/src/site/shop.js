@@ -63,12 +63,12 @@ export async function createShop(renderer, env) {
   // 給紙台（後ろ）と紙の山
   const feed = add(new THREE.BoxGeometry(1.0, 0.02, 0.7), steel, 0, 1.62, -0.58, press);
   feed.rotation.x = 0.35;
-  const stackMats = [new THREE.MeshStandardMaterial({ map: tex.edge, roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: tex.edge, roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: tex.paper, roughness: 0.95 }), new THREE.MeshStandardMaterial({ color: 0x777777 }), new THREE.MeshStandardMaterial({ map: tex.edge, roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: tex.edge, roughness: 0.9 })];
+  const stackMats = [new THREE.MeshStandardMaterial({ map: tex.edge, roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: tex.edge, roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: tex.paper, roughness: 0.95, color: 0x8a8a8a }), new THREE.MeshStandardMaterial({ color: 0x777777 }), new THREE.MeshStandardMaterial({ map: tex.edge, roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: tex.edge, roughness: 0.9 })];
   const feedStack = add(new THREE.BoxGeometry(0.66, 0.12, 0.46), stackMats, 0, 1.7, -0.6, press);
   feedStack.rotation.x = 0.35;
   // 排紙台（手前）
-  const out = add(new THREE.BoxGeometry(1.0, 0.02, 0.62), steel, 0, 0.88, 0.95, press);
-  out.rotation.x = -0.28;
+  const out = add(new THREE.BoxGeometry(1.1, 0.02, 0.75), steel, 0, 1.05, 0.98, press);
+  out.rotation.x = 0.8;
   // レバー（右）：オレンジの握り玉が、この場面の差し色
   const lever = new THREE.Group();
   lever.position.set(1.14, 1.1, 0.25);
@@ -80,7 +80,7 @@ export async function createShop(renderer, env) {
 
   // ---------- 刷られる紙：紙の上に、オレンジの版と黒の版（ずれる）を重ねる ----------
   const ink = { uO: { value: 0 }, uK: { value: 0 }, uOff: { value: new THREE.Vector2() } };
-  const sheetMat = new THREE.MeshStandardMaterial({ map: tex.paper, roughness: 0.9 });
+  const sheetMat = new THREE.MeshStandardMaterial({ map: tex.paper, roughness: 1.0, color: 0x8c8c8c });   // ランプの真下で白く飛ばないよう、紙は暗めに
   sheetMat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, ink, { uLogo: { value: tex.logoA }, uGrain: { value: tex.grain } });
     sh.fragmentShader = 'uniform float uO, uK; uniform vec2 uOff; uniform sampler2D uLogo, uGrain;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
@@ -91,11 +91,11 @@ export async function createShop(renderer, env) {
       diffuseColor.rgb *= mix(vec3(1.0), vec3(1.0, 0.28, 0.1), aO * 0.95);
       diffuseColor.rgb *= mix(vec3(1.0), vec3(0.06), aK * 0.96);`);
   };
-  const sheet = add(new THREE.PlaneGeometry(0.66, 0.44), sheetMat);
+  const sheet = add(new THREE.PlaneGeometry(0.96, 0.64), sheetMat);
 
   // ---------- 刷り上がりが舞う（64枚。すべて同じ式で、i ごとに種だけ違う） ----------
-  const flyMats = [tex.printA, tex.printB].map((map) => new THREE.MeshStandardMaterial({ map, roughness: 0.85, side: THREE.DoubleSide }));
-  const flies = flyMats.map((m) => new THREE.InstancedMesh(new THREE.PlaneGeometry(0.34, 0.5), m, N_FLY / 2));
+  const flyMats = [tex.printA, tex.printB].map((map) => new THREE.MeshStandardMaterial({ map, roughness: 0.85, side: THREE.DoubleSide, color: 0xb8b8b8, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.12 }));
+  const flies = flyMats.map((m) => new THREE.InstancedMesh(new THREE.PlaneGeometry(0.46, 0.68), m, N_FLY / 2));
   flies.forEach((f) => { f.frustumCulled = false; f.visible = false; scene.add(f); });
   const seeds = [...Array(N_FLY)].map((_, i) => { const r = mulberry32(300 + i); return [r(), r(), r(), r(), r(), r()]; });
   const dummy = new THREE.Object3D();
@@ -108,8 +108,8 @@ export async function createShop(renderer, env) {
       // 上へ吹き上がり、空気抵抗でふわっと止まって、ひらひら落ちる（床で止まる）
       const k = 2.2, up = (1 - Math.exp(-k * ti)) / k;
       const x = (b - 0.5) * 6.0 * up + Math.sin(ti * (2 + c * 3) + i) * 0.25 * (1 - Math.exp(-ti));
-      const y = Math.max(0.01 + i * 0.0005, 1.3 + (4.5 + c * 3) * up - 0.55 * ti * ti * 0.5 * (0.6 + d * 0.5));
-      const z = -0.4 + (0.6 + e * 2.6) * up;
+      const y = Math.max(0.01 + i * 0.0005, 1.3 + (2.6 + c * 1.6) * up - 0.35 * ti * ti * (0.6 + d * 0.5));
+      const z = -0.2 + (1.2 + e * 3.2) * up;
       dummy.position.set(x, y, z);
       const landed = y <= 0.02 + i * 0.0005;
       dummy.rotation.set(landed ? -Math.PI / 2 : ti * (2 + d * 4) + i, landed ? 0 : ti * (1 + e * 3), landed ? f * 6 : Math.sin(ti * 4 + i) * 0.8);
@@ -137,8 +137,8 @@ export async function createShop(renderer, env) {
   [[2.2, -0.6, 0.5], [-2.4, -0.9, 0.35]].forEach(([x, z, h]) => add(new THREE.BoxGeometry(0.7, h, 0.5), stackMats, x, h / 2, z));
 
   // ---------- 光：吊りランプ（暖かい白）、遠くのテレビの緑白、レバーのオレンジ ----------
-  scene.add(new THREE.HemisphereLight(0x223038, 0x080808, 0.35));
-  const spot = new THREE.SpotLight(0xffe2b8, 60, 9, 0.62, 0.6, 1.3);
+  scene.add(new THREE.HemisphereLight(0x2a3a44, 0x0a0a0a, 0.6));
+  const spot = new THREE.SpotLight(0xffe2b8, 22, 9, 0.7, 0.6, 1.3);
   spot.position.set(0.15, 3.3, 0.2);
   spot.target.position.set(0, 0.9, -0.5);
   scene.add(spot, spot.target);
@@ -175,7 +175,7 @@ export async function createShop(renderer, env) {
   function draw(look) {
     const t = st.t;
     // 紙：押すたびに機械の中へ入って、新しい版が刷られて出てくる
-    const P_OUT = new THREE.Vector3(0, 0.93, 0.2), P_IN = new THREE.Vector3(0, 1.05, -0.45);
+    const P_OUT = new THREE.Vector3(0, 1.08, 1.0), P_IN = new THREE.Vector3(0, 1.12, 0.45);   // 機械の手前の排紙台 ⇔ 版胴の下
     let pos = P_OUT.clone(), passK = 1;
     ink.uO.value = 0; ink.uK.value = 0;
     st.presses.forEach((p, i) => {
@@ -187,7 +187,7 @@ export async function createShop(renderer, env) {
     const aligned = st.presses.length >= 3 && t - st.presses[2] > PASS * 0.45;
     ink.uOff.value.set(aligned ? 0 : 0.035, aligned ? 0 : -0.028);
     sheet.position.copy(pos).add(press.position);
-    sheet.rotation.set(-Math.PI / 2 + 0.28 + (1 - passK) * 0, 0, 0);
+    sheet.rotation.set(-Math.PI / 2 + 0.8, 0, 0);   // カメラの方へ起こして、刷った版が読めるように
     // 版胴：1回ごとに1回転。全開のあとは高速で回り続ける
     const burst = burstAt(), sb = burst === null ? -1 : t - burst;
     let ang = 0;
@@ -200,7 +200,7 @@ export async function createShop(renderer, env) {
     lever.rotation.x = -pull * 0.9;
     lamps.forEach((l, i) => { l.material.emissiveIntensity = st.presses.length > i ? 2.2 : 0.1; });
     // 全開：機械が震え、刷り上がりが一斉に舞う
-    const hit = sb < 0 ? 0 : Math.exp(-sb * 3.5) * 0.9;
+    const hit = sb < 0 ? 0 : Math.exp(-sb * 3.5) * 0.45;
     press.position.x = sb > 0 ? Math.sin(t * 70) * 0.012 * Math.min(1, sb * 3) : 0;
     if (sb >= 0) placeFlies(sb); else flies.forEach((f) => { f.visible = false; });
     hung.forEach((g, i) => { g.rotation.z = Math.sin(t * 0.8 + i * 1.7) * 0.04 + (sb > 0 ? Math.sin(t * 9 + i) * 0.08 * Math.exp(-sb) : 0); g.rotation.x = Math.sin(t * 0.6 + i) * 0.05; });
@@ -213,8 +213,8 @@ export async function createShop(renderer, env) {
     // カメラ：入ってきたら少し引き、マウスで覗く。全開で揺れる
     const intro = Math.min(1, (t - st.enterAt) / 1.0), e = 1 - (1 - intro) ** 3;
     const shake = hit * 0.05;
-    camera.position.set(look.x * 0.35 + Math.sin(t * 59) * shake, 1.8 + look.y * 0.15 + Math.cos(t * 47) * shake, 3.0 + 0.9 * e);
-    camera.lookAt(look.x * 0.1, 1.1, -0.6);
+    camera.position.set(look.x * 0.35 + Math.sin(t * 59) * shake, 2.0 + look.y * 0.15 + Math.cos(t * 47) * shake, 3.3 + 1.2 * e);
+    camera.lookAt(look.x * 0.1, 1.2, -0.6);
     const wipe = t - st.enterAt < 0.5 ? 0.5 + (t - st.enterAt) : 0;
     return { hit, power: sb >= 0 ? 0.6 : st.presses.length / 3 * 0.4, wipe };
   }
