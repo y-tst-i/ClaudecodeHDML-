@@ -40,6 +40,14 @@ export function createRig(vrm, scale) {
     return n ? n.getWorldPosition(v()) : null;
   };
   vrm.scene.updateMatrixWorld(true);
+  // VRM0 は VRMUtils.rotateVRM0 でシーンごと180°回してある。正規化ボーンの回転・位置は
+  // VRM1 の約束で計算し、ここで x,z を反転して渡す（three-vrm-animation と同じ扱い）
+  const flip = vrm.meta?.metaVersion === '0';
+  const put = (node, qq) => {
+    if (!node) return;
+    node.quaternion.copy(qq);
+    if (flip) { node.quaternion.x *= -1; node.quaternion.z *= -1; }
+  };
 
   const hips = bone('hips');
   const rest = { hips: restPos('hips'), head: restPos('head') };
@@ -91,7 +99,8 @@ export function createRig(vrm, scale) {
     }
     pelvis.y = y;
     hips.position.copy(pelvis).divideScalar(scale);
-    hips.quaternion.copy(Qh);
+    if (flip) { hips.position.x *= -1; hips.position.z *= -1; }
+    put(hips, Qh);
 
     const fwd = pose.tan.clone();
     for (const [side, f] of [['left', fL], ['right', fR]]) {
@@ -103,41 +112,41 @@ export function createRig(vrm, scale) {
       const Qt = basisQ(v().subVectors(knee, hipW), pole).multiply(lg.a1);
       const Qs = basisQ(v().subVectors(f.pos, knee), pole).multiply(lg.a2);
       const Qf = yawQ(f.yaw).multiply(q().setFromAxisAngle(X, f.pitch));
-      lg.upper.quaternion.copy(Qh.clone().invert().multiply(Qt));
-      lg.lower.quaternion.copy(Qt.clone().invert().multiply(Qs));
-      lg.foot.quaternion.copy(Qs.clone().invert().multiply(Qf));
+      put(lg.upper, Qh.clone().invert().multiply(Qt));
+      put(lg.lower, Qt.clone().invert().multiply(Qs));
+      put(lg.foot, Qs.clone().invert().multiply(Qf));
       const toes = bone(`${side}Toes`);
       // 蹴り出しでつま先の関節を反らせる
-      if (toes) toes.quaternion.copy(q().setFromAxisAngle(X, -Math.max(0, f.pitch) * 0.9));
+      if (toes) put(toes, q().setFromAxisAngle(X, -Math.max(0, f.pitch) * 0.9));
     }
 
     // 背骨：腰と逆にひねって肩を正面に保つ
     const b = extra.breathe ?? 0;
-    bone('spine')?.quaternion.copy(euler(0.02 * walk + b * 0.01, -twist * 0.55, 0));
-    bone('chest')?.quaternion.copy(euler(0.01 * walk + b * 0.012, -twist * 0.45, 0));
-    bone('upperChest')?.quaternion.copy(euler(0, 0, 0));
+    put(bone('spine'), euler(0.02 * walk + b * 0.01, -twist * 0.55, 0));
+    put(bone('chest'), euler(0.01 * walk + b * 0.012, -twist * 0.45, 0));
+    put(bone('upperChest'), euler(0, 0, 0));
 
     // 腕：下ろして、反対の足と逆に振る
     const swingL = -0.95 * -fwdOf(fR) - 0.04; // 右足が前 → 左腕が前（- が前）
     const swingR = -0.95 * -fwdOf(fL) - 0.04;
     const down = 1.22;
-    bone('leftShoulder')?.quaternion.copy(euler(0, 0, -0.06));
-    bone('rightShoulder')?.quaternion.copy(euler(0, 0, 0.06));
-    bone('leftUpperArm').quaternion.copy(euler(swingL * walk + 0.05, 0, -down, 'XYZ'));
-    bone('rightUpperArm').quaternion.copy(euler(swingR * walk + 0.05, 0, down, 'XYZ'));
-    bone('leftLowerArm').quaternion.copy(euler(0, -(0.22 + Math.max(0, -swingL) * 0.5 * walk), 0));
-    bone('rightLowerArm').quaternion.copy(euler(0, 0.22 + Math.max(0, -swingR) * 0.5 * walk, 0));
-    bone('leftHand')?.quaternion.copy(euler(0, 0, 0.12));
-    bone('rightHand')?.quaternion.copy(euler(0, 0, -0.12));
+    put(bone('leftShoulder'), euler(0, 0, -0.06));
+    put(bone('rightShoulder'), euler(0, 0, 0.06));
+    put(bone('leftUpperArm'), euler(swingL * walk + 0.05, 0, -down, 'XYZ'));
+    put(bone('rightUpperArm'), euler(swingR * walk + 0.05, 0, down, 'XYZ'));
+    put(bone('leftLowerArm'), euler(0, -(0.22 + Math.max(0, -swingL) * 0.5 * walk), 0));
+    put(bone('rightLowerArm'), euler(0, 0.22 + Math.max(0, -swingR) * 0.5 * walk, 0));
+    put(bone('leftHand'), euler(0, 0, 0.12));
+    put(bone('rightHand'), euler(0, 0, -0.12));
     // 指：力を抜いて軽く曲げる（Tポーズの指は手のひらが下、指先が ±X）
     for (const [side, s] of [['left', 1], ['right', -1]]) {
       for (const [f, k] of [['Index', 0.9], ['Middle', 1], ['Ring', 1.1], ['Little', 1.2]]) {
-        bone(`${side}${f}Proximal`)?.quaternion.copy(euler(0, 0, -s * 0.35 * k));
-        bone(`${side}${f}Intermediate`)?.quaternion.copy(euler(0, 0, -s * 0.45 * k));
-        bone(`${side}${f}Distal`)?.quaternion.copy(euler(0, 0, -s * 0.3 * k));
+        put(bone(`${side}${f}Proximal`), euler(0, 0, -s * 0.35 * k));
+        put(bone(`${side}${f}Intermediate`), euler(0, 0, -s * 0.45 * k));
+        put(bone(`${side}${f}Distal`), euler(0, 0, -s * 0.3 * k));
       }
-      bone(`${side}ThumbMetacarpal`)?.quaternion.copy(euler(0, -s * 0.25, -s * 0.1));
-      bone(`${side}ThumbProximal`)?.quaternion.copy(euler(0, -s * 0.2, 0));
+      put(bone(`${side}ThumbMetacarpal`), euler(0, -s * 0.25, -s * 0.1));
+      put(bone(`${side}ThumbProximal`), euler(0, -s * 0.2, 0));
     }
 
     // 首・頭：揺れを打ち消して前を見る。look があればそちらへ
@@ -152,8 +161,8 @@ export function createRig(vrm, scale) {
       headYaw = THREE.MathUtils.clamp(Math.atan2(local.x, local.z), -0.9, 0.9) * w;
       headPitch = THREE.MathUtils.lerp(headPitch, -Math.atan2(local.y, Math.hypot(local.x, local.z)), w);
     }
-    bone('neck')?.quaternion.copy(euler(headPitch * 0.4, headYaw * 0.4, 0, 'YXZ'));
-    bone('head')?.quaternion.copy(euler(headPitch * 0.6, headYaw * 0.6, extra.tilt ?? 0, 'YXZ'));
+    put(bone('neck'), euler(headPitch * 0.4, headYaw * 0.4, 0, 'YXZ'));
+    put(bone('head'), euler(headPitch * 0.6, headYaw * 0.6, extra.tilt ?? 0, 'YXZ'));
   }
 
   return { apply, footDims, legLen, rest };

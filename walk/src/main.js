@@ -70,8 +70,11 @@ scene.add(new THREE.HemisphereLight(0xbcd6ff, 0xe8d6bc, 0.75));
 // ---- キャラ
 const loader = new GLTFLoader();
 loader.register((p) => new VRMLoaderPlugin(p));
-const gltf = await loader.loadAsync(PIC.chara.src);
+// ?chara=shino のように差し替えて比べられる（public/models/<名前>.vrm）
+const charaSrc = params.get('chara') ? `/models/${params.get('chara')}.vrm` : PIC.chara.src;
+const gltf = await loader.loadAsync(charaSrc);
 const vrm = gltf.userData.vrm;
+VRMUtils.rotateVRM0(vrm); // VRM0 は -Z を向いているので +Z へ（rig.js 側で回転を反転して渡す）
 VRMUtils.removeUnnecessaryVertices(gltf.scene);
 VRMUtils.combineSkeletons(gltf.scene);
 vrm.scene.traverse((o) => {
@@ -93,7 +96,7 @@ vrm.scene.traverse((o) => {
         m.rimLightingMixFactor = 0.35;
       }
       // 頭まわり（顔・目・髪）は1点で明暗をそろえる。名前で判定（VRoid 系は Face_ / Eye / Hair）
-      shade.patchChara(m, { face: /^(Face|Eye|Hair)/.test(m.name) });
+      shade.patchChara(m, { face: /(Face|Eye|Hair)/.test(m.name) });
     }
   }
 });

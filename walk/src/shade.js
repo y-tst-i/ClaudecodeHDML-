@@ -56,6 +56,8 @@ export function createPictureShade(pic, texture, camera, sunDir) {
   `;
 
   function patch(material, fragInject, extraUniforms = {}) {
+    if (material.userData.picPatched) return; // 同じ材質を複数のメッシュが使い回していることがある
+    material.userData.picPatched = true;
     const prev = material.onBeforeCompile; // MToon は自前の onBeforeCompile で define を入れる
     material.onBeforeCompile = (shader, r) => {
       prev?.call(material, shader, r);

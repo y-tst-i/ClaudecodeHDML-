@@ -26,7 +26,7 @@ export const PICTURE = {
 
   // キャラ
   chara: {
-    src: '/models/sample.vrm', // pixiv の VRM1 サンプル（再配布・改変可、クレジット不要）
+    src: '/models/shino.vrm', // VRoid のサンプル「Sendagaya Shino」（VRM0、メタに CC0・商用可と記載）
     height: 1.45, // 身長（m）。タイル35cmの世界で決めた値
   },
 
