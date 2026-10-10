@@ -108,6 +108,14 @@ vrm.scene.scale.setScalar(SCALE);
 vrm.scene.updateMatrixWorld(true);
 scene.add(vrm.scene);
 
+// スカートのばね骨：歩くたびに広がりすぎるので、硬く・揺れが早く収まるように
+for (const j of vrm.springBoneManager?.joints ?? []) {
+  if (/skirt/i.test(j.bone.name)) {
+    j.settings.stiffness *= 2.2;
+    j.settings.dragForce = Math.max(j.settings.dragForce, 0.6);
+  }
+}
+
 const rig = createRig(vrm, SCALE);
 const legLen = rig.legLen;
 const gait = createGait({

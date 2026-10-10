@@ -26,7 +26,7 @@ export const PICTURE = {
 
   // キャラ
   chara: {
-    src: '/models/shino.vrm', // VRoid のサンプル「Sendagaya Shino」（VRM0、メタに CC0・商用可と記載）
+    src: '/models/victoria.vrm', // VRoid のサンプル「Victoria Rubin」（VRM0、メタに CC0・商用可と記載）
     height: 1.45, // 身長（m）。タイル35cmの世界で決めた値
   },
 

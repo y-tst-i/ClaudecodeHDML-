@@ -21,10 +21,10 @@ node scripts/render.mjs --page walk/               # out/walk.mp4（14秒・30fp
 | `src/shade.js` | 絵の明るさで日向/日陰（キャラ）と、見えない床の影（乗算） |
 | `toolkit/` | 受け取ったツールキット（SKILL.md・計算スクリプト・動画メモ）そのまま |
 
-素材：背景 `public/textures/walk/sidewalk.png`（Codex 画像生成）、キャラ `public/models/shino.vrm`
-（VRoid のサンプル「Sendagaya Shino」。VRM のメタに CC0・商用可と記載。github.com/madjin/vrm-samples から取得）。
+素材：背景 `public/textures/walk/sidewalk.png`（Codex 画像生成）、キャラ `public/models/victoria.vrm`
+（VRoid のサンプル「Victoria Rubin」。VRM のメタに CC0・商用可と記載。github.com/madjin/vrm-samples から取得）。
 `?chara=<名前>` で `public/models/<名前>.vrm` に差し替えて比べられる。VRM0 / VRM1 のどちらでも動く。
-同じ所にある CC0 の Vita・Vivi も試した（容量のためリポジトリには入れていない）。
+同じ所にある CC0 の Sendagaya Shino・Vita・Vivi・HairSample_Female も試した（容量のためリポジトリには入れていない）。
 
 ## この絵で測った値（1. カメラ推定の記録）
 | 項目 | 値 | どう決めたか |
