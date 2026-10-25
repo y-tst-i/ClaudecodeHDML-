@@ -63,15 +63,22 @@ console.log('✓ 印刷工房：3回刷った');
 await until(() => window.__site.state().burst);
 console.log('✓ 印刷工房：全開で刷り上がりが舞う');
 await shot('shop-burst');
-await until(() => !document.getElementById('replay').hidden, 120000);
-await shot('alley-done');
-// 音を盗む：けものが電線を噛んだら、クリックで「ドン」
-await until(() => window.__site.state().stolen, 120000);
-await page.mouse.click(400, 300);
-await until(() => window.__site.state().dons >= 1, 30000);
-console.log('✓ 印刷工房：低音を盗まれて、クリックで「ドン」');
-await page.waitForTimeout(400);
-await shot('shop-don');
+// 音を盗む：けものが電線を噛んだら、クリックで「ドン」。4回吐くと低音を返し、エンディングへ
+await until(() => window.__site.state().stolen, 180000);
+for (let k = 1; k <= 4; k++) {
+  await page.mouse.click(400 + k * 60, 300);
+  await page.waitForFunction((n) => window.__site.state().dons >= n || window.__site.state().scene === 3, k, { timeout: 30000, polling: 200 });
+  if (k === 1) { await page.waitForTimeout(300); await shot('shop-don'); }
+  await until(() => window.__site.state().scene === 3 || window.__site.state().donReady, 30000);
+}
+console.log('✓ 印刷工房：低音を盗まれて、クリックで「ドン」を4回');
+await until(() => window.__site.state().scene === 3, 240000);
+console.log('✓ 印刷工房 → エンディングへ');
+await until(() => !document.getElementById('replay').hidden, 240000);
+const saveShown = await page.evaluate(() => !document.getElementById('save').hidden);
+if (!saveShown) throw new Error('SAVE が出ていない');
+await shot('end');
+console.log('✓ エンディング：紙を折って封、SAVE と REPLAY が出る');
 // 電源オフ：マウスが画面の外に出ると消える → 動かすと点く
 await page.evaluate(() => document.documentElement.dispatchEvent(new PointerEvent('pointerleave')));
 await until(() => window.__site.state().tvOff >= 1, 60000);
@@ -84,7 +91,7 @@ await until(() => window.__site.state().scene === 0 && !window.__site.state().im
 console.log('✓ REPLAY で部屋に戻る');
 const audio = (await state()).audio;
 console.log('audio:', JSON.stringify(audio));
-if (audio.loaded !== 25 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
+if (audio.loaded !== 31 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
 await browser.close();
 server.close();
 if (errors.length) { console.error('エラー:', [...new Set(errors)]); process.exit(1); }

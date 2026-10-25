@@ -45,7 +45,7 @@ console.log(`✓ 自動の画質調整: ${q}`);
 if (q !== 'LOW') throw new Error(`1コマ1秒の環境なのに LOW まで下がっていない: ${q}`);
 const audio = (await state()).audio;
 console.log('audio:', JSON.stringify(audio));
-if (audio.loaded !== 20 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
+if (audio.loaded !== 31 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
 await browser.close();
 server.close();
 if (errors.length) { console.error('エラー:', [...new Set(errors)]); process.exit(1); }

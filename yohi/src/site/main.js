@@ -5,6 +5,7 @@ import { createPost } from '../room/post.js';
 import { createRoom } from './room.js';
 import { createAlley } from './alley.js';
 import { createShop } from './shop.js';
+import { createEnd } from './end.js';
 import { prepareAudio, resumeAudio, sfx, setMuted, setDuck, audioState } from '../audio.js';
 
 // YOHI の体験型サイト（複数の場面）。場面1：ブラウン管の部屋 → 場面2：夜の路地 → 部屋へ戻る。
@@ -20,8 +21,17 @@ renderer.setPixelRatio(1);
 $('screen').appendChild(renderer.domElement);
 const env = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 
+// エンディング用：各場面の見せ場の1コマ（ポスターに刷る）
+const shots = [null, null, null];
+const grab = (i) => {
+  const c = shots[i] ?? document.createElement('canvas');
+  c.width = 640; c.height = 360;
+  c.getContext('2d').drawImage(renderer.domElement, 0, 0, 640, 360);
+  shots[i] = c;
+};
 const scenes = [await createRoom(renderer, env), await createAlley(renderer, env), await createShop(renderer, env)];
-let cur = Math.max(0, ['room', 'alley', 'shop'].indexOf(params.get('scene') ?? 'room'));
+scenes.push(await createEnd(renderer, env, { getShots: () => shots, getSpray: () => scenes[1].paintCanvas }));
+let cur = Math.max(0, ['room', 'alley', 'shop', 'end'].indexOf(params.get('scene') ?? 'room'));
 const post = createPost(renderer, scenes[0].scene, scenes[0].camera, scenes[0].dust);
 const use = (i) => { cur = i; post.setView(scenes[i].scene, scenes[i].camera); };
 use(cur);
@@ -43,7 +53,12 @@ function render(t, look, tvOff = 0) {
 }
 
 if (RENDER) {
-  window.__seek = (t) => { scenes[cur].script(t); render(t, { x: 0, y: 0 }); };
+  // エンディングの確認用：各場面を台本の見せ場の時刻で1コマずつ描いて撮る
+  const SHOT_T = [3.95, 5.0, 7.4];
+  window.__seek = (t) => {
+    if (cur === 3 && !shots[0]) { for (let i = 0; i < 3; i++) { use(i); scenes[i].script(SHOT_T[i]); render(SHOT_T[i], { x: 0, y: 0 }); grab(i); } use(3); }
+    scenes[cur].script(t); render(t, { x: 0, y: 0 });
+  };
   window.__showreel = { fps: 30, duration: 6, seek: (t) => (window.__seek(t), renderer.domElement.toDataURL('image/png')) };
 } else {
   addEventListener('resize', fit);
@@ -67,7 +82,7 @@ if (RENDER) {
   surface.addEventListener('pointerdown', (e) => {
     wake();
     resumeAudio();
-    if (!started) { started = true; sfx('power', { gain: 0.8 }); }
+    if (!started) { started = true; sfx('power', { gain: 0.8 }); scenes[cur].enter?.(); }
     surface.setPointerCapture(e.pointerId);
     lastX = e.clientX; lastY = e.clientY;
     scenes[cur].down(toNdc(e));
@@ -82,10 +97,22 @@ if (RENDER) {
     lastX = e.clientX; lastY = e.clientY;
     scenes[cur].move(toNdc(e), d);
   });
-  addEventListener('keydown', (e) => { wake(); if (e.code === 'Space' && !e.repeat && e.target.tagName !== 'BUTTON') { e.preventDefault(); resumeAudio(); started = true; scenes[cur].down(new THREE.Vector2(0, 0)); } });
+  addEventListener('keydown', (e) => { wake(); if (e.code === 'Space' && !e.repeat && e.target.tagName !== 'BUTTON') { e.preventDefault(); resumeAudio(); if (!started) { started = true; scenes[cur].enter?.(); } scenes[cur].down(new THREE.Vector2(0, 0)); } });
   addEventListener('keyup', (e) => { if (e.code === 'Space') up(); });
   $('sound').addEventListener('click', () => { muted = !muted; setMuted(muted); $('sound').textContent = muted ? 'SOUND OFF' : 'SOUND ON'; });
-  $('replay').addEventListener('click', () => { ended = false; $('replay').hidden = true; scenes[cur].leave?.(); scenes[0].reset(); use(0); ui(); });
+  // SAVE：折る前のポスター（その人のスプレー跡入り）を画像で持ち帰る
+  $('save').addEventListener('click', async () => {
+    const blob = await scenes[3].posterBlob();
+    const name = 'yohi-night.png';
+    try {
+      const dl = await window.claude?.use?.('downloads');
+      if (dl) { await dl.save({ filename: name, data: blob }); return; }
+    } catch (e) { if (e?.code === 'declined' || e?.code === 'rate_limited') return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
+  $('replay').addEventListener('click', () => { ended = false; $('replay').hidden = true; $('save').hidden = true; scenes[cur].leave?.(); scenes[0].reset(); use(0); scenes[0].enter?.(); ui(); });
   function ui() {
     $('count').textContent = `${String(cur + 1).padStart(2, '0')} / ${String(scenes.length).padStart(2, '0')}`;
     $('hint').textContent = tvOff > 0.5 ? 'MOVE' : scenes[cur].busy() ? '' : scenes[cur].hint;   // 最後の場面は終わっても遊べる（REPLAY と並べて操作を出す）
@@ -122,12 +149,13 @@ if (RENDER) {
     const ev = started ? scenes[cur].tick(dt) : null;
     // 'exit'：次の場面へ（前の場面の音を止め、次の場面を最初から始める）
     if (ev === 'exit' && cur + 1 < scenes.length) { scenes[cur].leave?.(); const n = cur + 1; scenes[n].reset(); use(n); scenes[n].enter?.(); sfx('cut', { gain: 1.2 }); }
-    if (ev === 'end' && !ended) { ended = true; $('replay').hidden = false; }
+    if (ev === 'end' && !ended) { ended = true; $('replay').hidden = false; $('save').hidden = cur !== 3; }
     look.x += (lookTarget.x - look.x) * Math.min(1, dt * 3);
     look.y += (lookTarget.y - look.y) * Math.min(1, dt * 3);
     $('bar').style.transform = `scaleX(${started ? scenes[cur].progress() : 0})`;
     ui();
     render(t, look, tvOff);
+    if (scenes[cur].snapNow?.()) grab(cur);   // 描いた直後なら、画面の中身をそのまま写せる
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

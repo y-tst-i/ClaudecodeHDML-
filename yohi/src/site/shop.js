@@ -256,7 +256,8 @@ export async function createShop(renderer, env) {
   const camera = new THREE.PerspectiveCamera(36, 16 / 9, 0.1, 60);
   // 状態：押した時刻の一覧＋全開のあとの「触った記録」（クリック、風、長押し）
   const st = { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, holdStart: 0, holdP: new THREE.Vector3(0, 1.4, 0.4), lastP: null, lastClick: -10, dons: [], beatOff: 0 };
-  let grooveTop = null, grooveKick = null, swirl = null;
+  let snapped = false;
+  let grooveTop = null, grooveKick = null, bgmBass = null, bgmArp = null, swirl = null;
   const stealAt = () => (burstAt() === null ? null : burstAt() + STEAL);
   const stolen = () => stealAt() !== null && st.t >= stealAt() + 0.45 && st.dons.length < GIVE_BACK;
   const burstAt = () => (st.presses.length >= 3 ? st.presses[2] + BURST_DELAY : null);
@@ -374,17 +375,21 @@ export async function createShop(renderer, env) {
 
   return {
     scene, camera,
+    snapNow() { const b = burstAt(); return b !== null && st.t - b >= 1.2 && !snapped && (snapped = true); },
     get hint() { return raining() ? 'CLICK / DRAG / HOLD' : 'CLICK'; },
     setQuality() {},
-    reset() { holder2.visible = false; Object.assign(st, { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, lastP: null, lastClick: -10, dons: [], beatOff: 0 }); },
+    reset() { snapped = false; holder2.visible = false; Object.assign(st, { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, lastP: null, lastClick: -10, dons: [], beatOff: 0 }); },
     // ビートは「低音抜き」と「キックだけ」を同時に鳴らす（キックだけを、けものが盗める）
     enter() {
       sfx('feed', { gain: 1.2 });
       this.leave();
       grooveTop = sfx('groove_top', { gain: 0.6, loop: true });
-      grooveKick = sfx('groove_kick', { gain: 0.6, loop: true, at: grooveTop?.start ?? 0 });
+      const at = grooveTop?.start ?? 0;
+      grooveKick = sfx('groove_kick', { gain: 0.6, loop: true, at });
+      bgmBass = sfx('bgm_shop_bass', { gain: 0.7, loop: true, at });      // うねるベース（これも盗まれる）
+      bgmArp = sfx('bgm_shop_arp', { gain: 0, loop: true, at });          // 全開のあとに入るアルペジオ
     },
-    leave() { grooveTop?.stop(0.2); grooveKick?.stop(0.2); grooveTop = grooveKick = null; swirl?.stop(); swirl = null; },
+    leave() { for (const h of [grooveTop, grooveKick, bgmBass, bgmArp]) h?.stop(0.2); grooveTop = grooveKick = bgmBass = bgmArp = null; swirl?.stop(); swirl = null; },
     down(ndc) {
       if (raining()) {
         // 衝撃波：押した所から紙がはじける
@@ -437,7 +442,10 @@ export async function createShop(renderer, env) {
       // 盗む／返す：キックだけの音を消す・戻す
       const sa = stealAt();
       if (sa !== null && prev < sa + 0.3 && st.t >= sa + 0.3) { sfx('snap', { gain: 1.0, pan: 0.3 }); sfx('chan', { gain: 0.5, pan: 0.3 }); }
-      if (grooveKick) grooveKick.gain.gain.value = 0.6 * (sa !== null && st.t >= sa + 0.3 && st.dons.filter((d) => d <= st.t).length < GIVE_BACK ? 0 : 1);
+      const lowOn = sa !== null && st.t >= sa + 0.3 && st.dons.filter((d) => d <= st.t).length < GIVE_BACK ? 0 : 1;
+      if (grooveKick) grooveKick.gain.gain.value = 0.6 * lowOn;
+      if (bgmBass) bgmBass.gain.gain.value = 0.7 * lowOn * (st.presses.length ? 1 : 0.6);
+      if (bgmArp) bgmArp.gain.gain.value = b !== null && st.t >= b ? 0.85 : 0;
       // 風は吹いたあと弱まっていく。流された分は積み重なる
       st.windV *= Math.exp(-dt * 1.4);
       st.windX += st.windV * dt;
@@ -447,13 +455,15 @@ export async function createShop(renderer, env) {
       st.hold += (target - st.hold) * Math.min(1, dt * (target ? 2.2 : 3.5));
       if (before < 0.15 && st.hold >= 0.15) { swirl?.stop(); swirl = sfx('charge', { gain: 0.6 }); }
       if (before > 0.5 && st.hold <= 0.5 && !target) { swirl?.stop(0.1); swirl = null; sfx('drop', { gain: 0.7 }); }
-      if (b !== null && st.t - b > 3.8) return 'end';
+      // エンディングへ：低音を返して少ししたら。触らなくても40秒で
+      const lastDon = st.dons[st.dons.length - 1];
+      if (b !== null && ((st.dons.length >= GIVE_BACK && st.t - lastDon > 2.5) || st.t - b > 40)) return 'exit';
       return null;
     },
     progress() { return burstAt() === null ? st.presses.length / 3 : 0; },
     busy() { if (raining()) return false; const n = st.presses.length; return n >= 3 || (n > 0 && st.t - st.presses[n - 1] < PASS); },
     draw,
-    state: () => ({ presses: st.presses.length, burst: raining(), hold: st.hold, clicks: st.clicks.length, stolen: stolen(), dons: st.dons.length }),
+    state: () => ({ presses: st.presses.length, burst: raining(), hold: st.hold, clicks: st.clicks.length, stolen: stolen(), dons: st.dons.length, donReady: st.dons.every((d) => d <= st.t) }),
     // ?mode=render 用：0.8 / 1.8 / 2.8 秒に押す → 4.3 全開。6.0 に左でクリック、7.5〜 中央で長押し
     script(t) {
       this.reset();

@@ -79,7 +79,7 @@ console.log('✓ C5 最後まで進み、REPLAY で最初に戻る');
 // 音：効果音20個がすべて読めて、鳴る状態になっているか
 const audio = (await state()).audio;
 console.log('audio:', JSON.stringify(audio));
-if (audio.loaded !== 20 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
+if (audio.loaded !== 31 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
 await browser.close();
 server.close();
 if (errors.length) { console.error('エラー:', [...new Set(errors)]); process.exit(1); }

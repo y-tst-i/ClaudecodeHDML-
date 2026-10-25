@@ -68,7 +68,8 @@ export async function createRoom(renderer, env) {
   world.scene.add(ir);
   const ray = new THREE.Raycaster();
   const screens = world.tvs.filter((tv) => !tv.hero).map((tv) => tv.screen);
-  let charge = null;
+  let snapped = false;   // エンディング用に1コマ撮ったか
+  let charge = null, bgm = null, pulse = null;   // BGM：暗いパッド＋電気が溜まるほど大きくなる脈
   const ease = (x) => x * x * (3 - 2 * x);
 
   // そのテレビの位置から、けものを撮る（その画面自身は元の映像に戻して描く＝自分を映し込まない）
@@ -160,8 +161,15 @@ export async function createRoom(renderer, env) {
 
   return {
     scene: world.scene, camera, hint: 'HOLD',
+    snapNow() { return st.impactAt !== null && st.t - st.impactAt >= 0.35 && !snapped && (snapped = true); },
     setQuality: world.setQuality,
-    reset() { st.t = 0; st.power = 0; st.impactAt = null; st.holding = false; st.sneezeAt = null; st.lastBite = 0; st.secret = null; holder.visible = true; world.hero.mat.uniforms.uRipple.value = -1; camera.fov = 34; camera.updateProjectionMatrix(); },
+    reset() { snapped = false; st.t = 0; st.power = 0; st.impactAt = null; st.holding = false; st.sneezeAt = null; st.lastBite = 0; st.secret = null; holder.visible = true; world.hero.mat.uniforms.uRipple.value = -1; camera.fov = 34; camera.updateProjectionMatrix(); },
+    enter() {
+      this.leave();
+      bgm = sfx('bgm_room', { gain: 0.9, loop: true });
+      pulse = sfx('bgm_room_pulse', { gain: 0, loop: true, at: bgm?.start ?? 0 });
+    },
+    leave() { bgm?.stop(0.3); pulse?.stop(0.3); bgm = pulse = null; charge?.stop(0.05); charge = null; },
     down(ndc) {
       st.holding = true;
       if (st.impactAt !== null || !ndc || (st.secret && st.t - st.secret.at < SECRET_LEN)) return;
@@ -177,6 +185,7 @@ export async function createRoom(renderer, env) {
     tick(dt) {
       st.t += dt;
       const prev = st.power;
+      if (pulse) pulse.gain.gain.value = st.impactAt === null ? 0.15 + st.power * 0.85 : 1;
       if (st.impactAt === null) {
         if (st.holding) {
           if (!charge) charge = sfx('charge', { offset: Math.max(0, st.power * 1.6) });

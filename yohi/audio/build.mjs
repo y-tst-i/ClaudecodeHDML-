@@ -11,7 +11,7 @@ import path from 'node:path';
 const SR = 48000;
 const DURATION = 15;
 const BEAT = 0.5; // 120BPM
-const N = SR * DURATION;
+const N = SR * Math.max(DURATION, 24);   // BGM のループ（8秒）を3回ぶん描けるだけの長さ
 const L = new Float32Array(N), R = new Float32Array(N);       // ドライ
 const sendL = new Float32Array(N), sendR = new Float32Array(N); // 残響へ送る分
 
@@ -221,6 +221,104 @@ function tvOff(t0, g = 1) {
   snap(t0, 0.5 * g);
   sub(t0, 0.35 * g, 0.3, 58);
 }
+// ---------- BGM 用の楽器（場面ごとのループ。キーは E マイナー、120BPM） ----------
+const HZ = { C2: 65.41, D2: 73.42, E2: 82.41, G2: 98.0, A2: 110.0, B2: 123.47, C3: 130.81, D3: 146.83, E3: 164.81, Fs3: 185.0, G3: 196.0, A3: 220.0, B3: 246.94, D4: 293.66, E4: 329.63, Fs4: 369.99, G4: 392.0, A4: 440.0, B4: 493.88, D5: 587.33, E5: 659.25 };
+// パッド：少しずつずらしたノコギリ波を、ゆっくり開閉するローパスに通す（ゆっくり立ち上がり、ゆっくり消える）
+function pad(t0, dur, freqs, g = 1, bright = 700) {
+  freqs.forEach((fr, k) => {
+    for (const [det, pan] of [[0.997, -0.5], [1.003, 0.5]]) {
+      const f = biquad();
+      let ph = rnd();
+      play(t0, dur + 1.6, (t) => {
+        ph += fr * det / SR;
+        const a = Math.min(1, t / 1.0) * (t < dur ? 1 : Math.exp(-(t - dur) / 0.5));
+        return f(saw(ph), 'lp', bright * (1 + 0.4 * Math.sin(t * 0.8 + k)), 0.8) * a;
+      }, { gain: 0.05 * g, pan, rev: 0.5 });
+    }
+  });
+}
+// エレピ（FM）：叩いた瞬間だけ金属っぽく、すぐ丸くなる。ゆっくり揺れる
+function epiano(t0, freqs, g = 1, len = 1.6) {
+  freqs.forEach((fr, k) => play(t0 + k * 0.012, len, (t) => {
+    const mod = Math.sin(2 * Math.PI * fr * t) * 1.4 * Math.exp(-t / 0.25);
+    return Math.sin(2 * Math.PI * fr * t + mod) * env(t, 0.004, len * 0.35) * (1 + 0.15 * Math.sin(t * 2 * Math.PI * 4.5));
+  }, { gain: 0.12 * g, pan: (k / (freqs.length - 1) - 0.5) * 0.6, rev: 0.4 }));
+}
+// ベース：正弦波＋少しだけ歪み。lenの最後で切れる
+function bass(t0, fr, len, g = 1) {
+  let ph = 0;
+  play(t0, len, (t) => { ph += fr / SR; return Math.tanh(Math.sin(2 * Math.PI * ph) * 1.8 + Math.sin(4 * Math.PI * ph) * 0.3) * env(t, 0.01, len * 0.8) * (1 - range(t, len - 0.03, len)); }, { gain: 0.42 * g, rev: 0.03 });
+}
+// うねるシンセベース（16分で刻む）：ノコギリ波をアクセントごとに開くローパスで
+function acid(t0, fr, len, g = 1, open = 1) {
+  const f = biquad();
+  let ph = 0;
+  play(t0, len, (t) => { ph += fr / SR; return Math.tanh(f(saw(ph), 'lp', 220 + 2400 * open * Math.exp(-t / 0.06), 4) * 2) * (1 - range(t, len - 0.01, len)); }, { gain: 0.2 * g, rev: 0.05 });
+}
+// はじく音（アルペジオ）
+function pluck(t0, fr, g = 1, pan = 0) {
+  const f = biquad();
+  let ph = rnd();
+  play(t0, 0.5, (t) => { ph += fr / SR; return f(saw(ph) + 0.5 * Math.sign(Math.sin(2 * Math.PI * ph * 0.5)), 'lp', 600 + 5000 * Math.exp(-t / 0.05), 1.5) * Math.exp(-t / 0.13); }, { gain: 0.14 * g, pan, rev: 0.45 });
+}
+function shaker(t0, g = 1, pan = 0.3) {
+  const f = biquad();
+  play(t0, 0.09, (t) => f(noise(), 'bp', 7500, 1.2) * env(t, 0.012, 0.025), { gain: 0.25 * g, pan, rev: 0.15 });
+}
+// レコードのプチプチ（まばらな小さい破裂）
+function crackle(t0, dur, g = 1) {
+  const f = biquad();
+  play(t0, dur, () => f((rnd() > 0.9993 ? noise() * 6 : noise() * 0.04), 'bp', 2500, 0.7), { gain: 0.12 * g, pan: 0, rev: 0.02 });
+}
+function snare(t0, g = 1) { clap(t0, 0.9 * g); const f = biquad(); play(t0, 0.2, (t) => f(noise(), 'hp', 1800) * Math.exp(-t / 0.05), { gain: 0.25 * g, rev: 0.3 }); }
+
+// BGM（8秒＝4小節のループ）。off から1周ぶんを描く。3周描いて真ん中を切り出すので、残響がつなぎ目でも途切れない
+const BGM = {
+  // 部屋：暗いパッドと、ブラウン管の唸り。たまに高い「ピン」
+  bgm_room: (o) => {
+    pad(o, 4, [HZ.E2, HZ.B2, HZ.E3, HZ.Fs3, HZ.G3], 1, 650);
+    pad(o + 4, 4, [HZ.C3 / 2, HZ.G2, HZ.C3, HZ.E3, HZ.B3], 1, 650);
+    hum(o, o + 8);
+    crackle(o, 8, 0.6);
+    play(o + 0.0, 2.5, (t) => Math.sin(2 * Math.PI * HZ.B4 * t) * Math.exp(-t / 0.6), { gain: 0.05, pan: -0.4, rev: 0.9 });
+    play(o + 5.5, 2.5, (t) => Math.sin(2 * Math.PI * HZ.E5 * t) * Math.exp(-t / 0.6), { gain: 0.04, pan: 0.4, rev: 0.9 });
+  },
+  // 部屋の脈：電気が溜まるほど大きくする層（拍ごとの低い脈と、16分の細かい刻み）
+  bgm_room_pulse: (o) => {
+    for (let b = 0; b < 8; b += BEAT) sub(o + b, 0.5, 0.3, 41.2);
+    for (let b = 0; b < 8; b += 0.125) hat(o + b, (b * 8) % 2 ? 0.25 : 0.45);
+    for (let b = 0.25; b < 8; b += BEAT) tick(o + b, 0.5, 0.3);
+  },
+  // 路地：遅く重いビート（ハーフタイム）、うねるベース、夜のエレピ、レコードのノイズ
+  bgm_alley: (o) => {
+    const roots = [HZ.E2, HZ.E2, HZ.C2, HZ.D2];
+    const chords = [[HZ.E3, HZ.G3, HZ.B3, HZ.D4, HZ.Fs4], [HZ.E3, HZ.G3, HZ.B3, HZ.D4, HZ.Fs4], [HZ.C3, HZ.E3, HZ.G3, HZ.B3, HZ.D4], [HZ.D3, HZ.Fs3, HZ.A3, HZ.B3, HZ.E4]];
+    for (let bar = 0; bar < 4; bar++) {
+      const b0 = o + bar * 2;
+      kick(b0, 1.0, 0.5); kick(b0 + 0.75, 0.6, 0.35); if (bar % 2) kick(b0 + 1.375, 0.5, 0.3);
+      snare(b0 + 1.0);
+      bass(b0, roots[bar], 0.7); bass(b0 + 0.75, roots[bar], 0.45, 0.7); bass(b0 + 1.5, roots[bar] * (bar === 3 ? 1.122 : 1.5), 0.45, 0.6);
+      epiano(b0 + 0.02, chords[bar], 1, 1.4); epiano(b0 + 1.25, chords[bar].slice(1), 0.6, 0.6);
+    }
+    crackle(o, 8, 1.2);
+  },
+  // 路地の上もの：塗るほど大きくする層（シェイカーとオープンハット）
+  bgm_alley_top: (o) => {
+    for (let b = 0; b < 8; b += 0.25) shaker(o + b, (b * 4) % 2 ? 0.6 : 1, (b * 4) % 2 ? 0.4 : -0.2);
+    for (let b = 0.5; b < 8; b += 1) hat(o + b, 0.5, true);
+  },
+  // 工房のベース：16分で刻むうねるベース（ビートの groove と一緒に鳴らす）
+  bgm_shop_bass: (o) => {
+    const pat = [HZ.E2, 0, HZ.E2, HZ.E2, HZ.G2, 0, HZ.E2, HZ.A2, HZ.E2, 0, HZ.E2, HZ.B2 / 2 * 2, HZ.D3 / 2, 0, HZ.E2, HZ.G2];
+    for (let s = 0; s < 64; s++) { const fr = pat[s % 16] * (s >= 48 && pat[s % 16] ? 1.122 : 1); if (fr) acid(o + s * 0.125, fr, 0.11, 1, s % 4 === 0 ? 1 : 0.35); }
+  },
+  // 工房の上もの：全開のあとに足すアルペジオ（E マイナー・ペンタトニック）
+  bgm_shop_arp: (o) => {
+    const notes = [HZ.E4, HZ.G4, HZ.B4, HZ.D5, HZ.E5, HZ.D5, HZ.B4, HZ.G4];
+    for (let s = 0; s < 64; s++) pluck(o + s * 0.125, notes[(s * 3) % 8] * (s >= 32 && s < 48 ? 0.891 : 1), s % 2 ? 0.6 : 1, Math.sin(s * 0.7) * 0.6);
+  },
+};
+
 function score() {
 // C1 SIGNAL 0–3
 powerOn(0);
@@ -286,8 +384,8 @@ function reverb(inp, combs, aps) {
 // ---------- 仕上げ：残響を足して、軽く潰して（tanh）、最後は減衰。16bit WAV ----------
 // pre（音量の掛け率）は曲全体で決め、効果音にも同じ値を使う（効果音どうしの音量バランスが曲と同じになる）
 let pre = 1;
-function mixdown(file, seconds, { fadeOut = 0.4, normalize = false } = {}) {
-  const n = Math.round(seconds * SR);
+function mixdown(file, seconds, { fadeOut = 0.4, normalize = false, from = 0 } = {}) {
+  const n = Math.round(seconds * SR), o = Math.round(from * SR);   // from：書き出しを始める秒（ループの真ん中の1周を切り出す）
   const wl = reverb(sendL, [1557, 1617, 1491, 1422].map((x) => x * 2), [225, 556]);
   const wr = reverb(sendR, [1580, 1640, 1514, 1445].map((x) => x * 2), [248, 579]);
   if (normalize) {
@@ -298,8 +396,8 @@ function mixdown(file, seconds, { fadeOut = 0.4, normalize = false } = {}) {
   const pcm = Buffer.alloc(44 + n * 4);
   for (let i = 0; i < n; i++) {
     const t = i / SR, fade = 1 - range(t, seconds - fadeOut, seconds);
-    pcm.writeInt16LE(Math.round(Math.tanh((L[i] + wl[i] * 0.5) * pre) * 0.89 * fade * 32767), 44 + i * 4);
-    pcm.writeInt16LE(Math.round(Math.tanh((R[i] + wr[i] * 0.5) * pre) * 0.89 * fade * 32767), 46 + i * 4);
+    pcm.writeInt16LE(Math.round(Math.tanh((L[o + i] + wl[o + i] * 0.5) * pre) * 0.89 * fade * 32767), 44 + i * 4);
+    pcm.writeInt16LE(Math.round(Math.tanh((R[o + i] + wr[o + i] * 0.5) * pre) * 0.89 * fade * 32767), 46 + i * 4);
   }
   pcm.write('RIFF', 0); pcm.writeUInt32LE(36 + n * 4, 4); pcm.write('WAVE', 8);
   pcm.write('fmt ', 12); pcm.writeUInt32LE(16, 16); pcm.writeUInt16LE(1, 20); pcm.writeUInt16LE(2, 22);
@@ -353,5 +451,13 @@ if (process.argv.includes('--sfx')) {
     execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-i', wav, '-c:a', 'libmp3lame', '-b:a', '160k', wav.replace('.wav', '.mp3')]);
     rmSync(wav);
   }
-  console.log(`→ yohi/assets/audio/sfx/ (${SFX.length} files)`);
+  for (const [name, fn] of Object.entries(BGM)) {
+    clear();
+    for (const o of [0, 8, 16]) fn(o);
+    const wav = path.join(dir, `${name}.wav`);
+    mixdown(wav, 8, { fadeOut: 0, from: 8 });
+    execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-i', wav, '-c:a', 'libmp3lame', '-b:a', '128k', wav.replace('.wav', '.mp3')]);
+    rmSync(wav);
+  }
+  console.log(`→ yohi/assets/audio/sfx/ (${SFX.length} files + BGM ${Object.keys(BGM).length})`);
 }

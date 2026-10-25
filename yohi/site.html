@@ -21,7 +21,8 @@
       button:hover, button:focus-visible { background: var(--fg); color: var(--bg); outline: none; }
       #sound { position: absolute; right: 24px; top: 16px; }
       #replay { position: absolute; right: 24px; bottom: 48px; }
-      #replay[hidden] { display: none; }
+      #save { position: absolute; right: 24px; bottom: 88px; }
+      #replay[hidden], #save[hidden] { display: none; }
       .br { position: absolute; right: 24px; bottom: 24px; opacity: 0.6; }
       @media (max-width: 600px) { .tl, .bl { left: 16px; } #sound, .br { right: 16px; } }
     </style>
@@ -32,9 +33,10 @@
       <div class="tl">YOHI IWAKIRI</div>
       <button id="sound" type="button" aria-pressed="true">SOUND ON</button>
       
-      <div class="bl" id="count">01 / 02</div>
+      <div class="bl" id="count">01 / 04</div>
       <div class="hintwrap"><div id="hint">HOLD</div><div class="track"><div id="bar"></div></div></div>
       <button id="replay" type="button" hidden>REPLAY</button>
+      <button id="save" type="button" hidden>SAVE</button>
       <div class="br" id="quality" title="パソコンの速さに合わせて自動で画質を調整しています"></div>
     </div>
     <script type="module" src="./src/site/main.js"></script>

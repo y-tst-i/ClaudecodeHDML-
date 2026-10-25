@@ -222,7 +222,8 @@ export async function createAlley(renderer, env) {
   // ---------- 状態 ----------
   const st = { t: 0, enterAt: 0, points: [], drawn: 0, painted: new Uint8Array(GRID_W * GRID_H), coverage: 0, completeAt: null, holding: false, speed: 0, nozzle: null,
     licks: [], lickDrawn: 0, sh: { x: SH_HOME.x, y: SH_HOME.y, dir: 1, out: false, lastLick: 0 }, shAtComplete: null };
-  let sprayLoop = null;
+  let snapped = false;
+  let sprayLoop = null, bgm = null, bgmTop = null;   // BGM：重いビート＋塗るほど大きくなる上もの
 
   // 吹いた点 i を canvas に描く：やわらかい芯＋まわりの飛沫（種 i の乱数）
   function stamp(i) {
@@ -337,14 +338,23 @@ export async function createAlley(renderer, env) {
 
   return {
     scene, camera, hint: 'DRAG',
+    paintCanvas: canvas,   // 吹いた跡（エンディングのポスターに刷る）
+    snapNow() { return st.completeAt !== null && st.t - st.completeAt >= 2.0 && !snapped && (snapped = true); },
     setQuality() {},
     reset() {
       st.t = 0; st.enterAt = 0; st.points = []; st.drawn = 0; st.painted.fill(0); st.coverage = 0; st.completeAt = null; st.holding = false; st.nozzle = null;
+      snapped = false;
       st.licks = []; st.lickDrawn = 0; st.sh = { x: SH_HOME.x, y: SH_HOME.y, dir: 1, out: false, lastLick: 0 }; st.shAtComplete = null;
       g2.clearRect(0, 0, canvas.width, canvas.height); paintTex.needsUpdate = true;
     },
-    enter() { sfx('rattle'); sprayLoop?.stop(); sprayLoop = sfx('spray', { gain: 0, loop: true }); },
-    leave() { sprayLoop?.stop(0.1); sprayLoop = null; },
+    enter() {
+      this.leave();
+      sfx('rattle');
+      sprayLoop = sfx('spray', { gain: 0, loop: true });
+      bgm = sfx('bgm_alley', { gain: 0.75, loop: true });
+      bgmTop = sfx('bgm_alley_top', { gain: 0, loop: true, at: bgm?.start ?? 0 });
+    },
+    leave() { sprayLoop?.stop(0.1); bgm?.stop(0.3); bgmTop?.stop(0.3); sprayLoop = bgm = bgmTop = null; },
     down(ndc) { st.holding = true; const h = pick(ndc); if (h && st.completeAt === null) { addPoint(h); st.nozzle = h.p; } },
     up() { st.holding = false; },
     move(ndc, dist) {
@@ -358,6 +368,7 @@ export async function createAlley(renderer, env) {
     tick(dt) {
       st.t += dt;
       st.speed *= Math.pow(0.02, dt);
+      if (bgmTop) bgmTop.gain.gain.value = 1.6 * (st.completeAt === null ? Math.min(1, st.coverage / COMPLETE_AT) : 1);
       if (sprayLoop) sprayLoop.gain.gain.value = st.holding && st.completeAt === null ? 0.25 + st.speed * 0.75 : 0;
       // 影：ある程度塗られたら壁を這い出し、少し前に塗られた所へ向かって舐める
       if (st.completeAt === null) {
