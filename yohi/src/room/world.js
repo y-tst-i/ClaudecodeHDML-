@@ -43,6 +43,7 @@ precision highp float;
 uniform sampler2D uRT, uSmudge;
 uniform float uT, uOn, uStatic, uFlash, uSeed, uGain;
 uniform float uRipple;   // けものが飛び込んでからの秒（負なら無し）
+uniform float uRaw;      // 1：映像が明るさそのままの値（隠しチャンネルの暗視カメラ）
 uniform vec3 uTint;
 uniform vec4 uCrop;   // xy = 中心, z = 拡大率（テレビごとに映す範囲を変える）
 varying vec2 vUv;
@@ -66,7 +67,8 @@ void main(){
   vec2 cu = (u - 0.5) / uCrop.z + uCrop.xy;
   // 縦ロール（同期が外れた古いテレビ）
   cu.y = fract(cu.y + uCrop.w * uT);
-  vec3 img = pow(max(texture2D(uRT, cu).rgb, 0.0), vec3(2.2)) * uTint;
+  vec3 raw = texture2D(uRT, cu).rgb;
+  vec3 img = uRaw > 0.5 ? vec3(0.55, 1.0, 0.7) * pow(dot(raw, vec3(0.3, 0.6, 0.1)) * 2.5, 0.8) : pow(max(raw, 0.0), vec3(2.2)) * uTint;   // 暗視カメラは緑の単色
   // 砂嵐（粗い粒、横にすこし流れる）
   float n = hash(floor(u * vec2(220.0, 160.0)) + floor(uT * 30.0) * 7.31 + uSeed);
   vec3 stat = vec3(0.55, 0.62, 0.6) * n * (0.7 + 0.3 * sin(u.y * 40.0 + uT * 20.0));
@@ -75,6 +77,8 @@ void main(){
   float open = smoothstep(uOn * 0.5 + 0.004, uOn * 0.5 - 0.004, abs(u.y - 0.5));
   float line = exp(-abs(u.y - 0.5) * 160.0) * step(0.001, uOn) * (1.0 - uOn) * 6.0;
   col = col * open + vec3(0.8, 1.0, 0.9) * line;
+  // 暗視カメラ：左上で赤い録画の点が点滅する
+  if (uRaw > 0.5) col += vec3(1.0, 0.12, 0.05) * 1.5 * smoothstep(0.03, 0.022, length((u - vec2(0.1, 0.86)) * vec2(1.33, 1.0))) * step(0.5, fract(uT));
   col *= 0.8 + 0.2 * sin(u.y * 540.0);        // 走査線
   col += vec3(0.9, 1.0, 0.95) * uFlash * (0.4 + 0.6 * open);   // 衝撃の白
   col += vec3(0.8, 1.0, 0.9) * rip * 1.5;
@@ -181,7 +185,7 @@ export async function createWorld(renderer, files) {
     geo.computeVertexNormals();
     const mat = new THREE.ShaderMaterial({
       vertexShader: screenVert, fragmentShader: screenFrag,
-      uniforms: { uRT: { value: channels[channel] }, uSmudge: { value: tex.smudge }, uTint: { value: new THREE.Color(1, 1, 1) }, uCrop: { value: new THREE.Vector4(0.5, 0.5, 1, 0) }, uT: { value: 0 }, uOn: { value: 0 }, uStatic: { value: 1 }, uFlash: { value: 0 }, uSeed: { value: rnd() * 100 }, uGain: { value: 1 }, uRipple: { value: -1 } },
+      uniforms: { uRT: { value: channels[channel] }, uSmudge: { value: tex.smudge }, uTint: { value: new THREE.Color(1, 1, 1) }, uCrop: { value: new THREE.Vector4(0.5, 0.5, 1, 0) }, uT: { value: 0 }, uOn: { value: 0 }, uStatic: { value: 1 }, uFlash: { value: 0 }, uSeed: { value: rnd() * 100 }, uGain: { value: 1 }, uRipple: { value: -1 }, uRaw: { value: 0 } },
     });
     const screen = new THREE.Mesh(geo, mat);
     screen.position.set(-panel / 2, 0, d / 2 - 0.005);
@@ -267,11 +271,12 @@ export async function createWorld(renderer, files) {
   scene.add(key);
 
   return {
-    scene, tvs, tex, hero,
+    scene, tvs, tex, hero, wet,
     // 画質の段階：2（LOW）では床の映り込み（場面をもう1回描く重い処理）を止める
     setQuality(q) { wet.visible = q < 2; },
     // 絵の状態を決める。power 0..1（溜まり具合）、sinceImpact（衝撃からの秒。衝撃前は負）
-    update({ t, power, sinceImpact, bite = false }) {
+    // secret：{ tv, since, texture, len } 隠しチャンネル。その1台だけ、別の映像（暗視カメラ）が点く
+    update({ t, power, sinceImpact, bite = false, secret = null }) {
       const impacted = sinceImpact >= 0;
       const hit = impacted ? Math.exp(-sinceImpact * 5) : 0;
       // 主役の画面の中身：衝撃までは溜まり具合で帯が組み上がる。衝撃後は映像の 2.0〜2.95 秒
@@ -297,7 +302,18 @@ export async function createWorld(renderer, files) {
         u.uStatic.value = stat;
         u.uFlash.value = hit * 0.45;
         u.uGain.value = (tv.hero ? 1.0 : 0.8) * flick * (1 + hit * 0.4) * (bite && tv.hero && !impacted ? 1 - power * 0.7 : 1);
-        lit += on * (tv.hero ? 3 : 1);
+        u.uRT.value = tv.baseRT ??= u.uRT.value;
+        u.uRaw.value = 0;
+        if (secret && secret.tv === tv && secret.since >= 0 && secret.since < secret.len) {
+          const k = secret.since;
+          u.uRT.value = secret.texture; u.uRaw.value = 1;
+          u.uOn.value = Math.max(on, Math.min(1, k / 0.1) * Math.min(1, (secret.len - k) / 0.12));
+          u.uStatic.value = k < 0.25 ? 1 - k / 0.25 * 0.9 : 0.06 + (hash(Math.floor(t * 12), 9) > 0.9 ? 0.4 : 0);
+          u.uGain.value = 1.1;
+          tv.secretCrop ??= u.uCrop.value.clone();
+          u.uCrop.value.set(0.5, 0.5, 1, 0);
+        } else if (tv.secretCrop) { u.uCrop.value.copy(tv.secretCrop); tv.secretCrop = null; }
+        lit += u.uOn.value * (tv.hero ? 3 : 1);
       }
       const avg = lit / (tvs.length + 2);
       screenLight.intensity = (avg * 1.4 + hit * 2) * (impacted ? 1 : 0.8 + 0.2 * hash(Math.floor(t * 24), 3));

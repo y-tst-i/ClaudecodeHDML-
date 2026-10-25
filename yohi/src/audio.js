@@ -2,7 +2,7 @@
 // 音はファイル（yohi/audio/build.mjs --sfx で書き出したもの）、鳴らすタイミングはコード。
 const SFX_URLS = import.meta.glob('../assets/audio/sfx/*.mp3', { eager: true, query: '?url', import: 'default' });
 
-let ctx = null, master = null, error = '';
+let ctx = null, master = null, duck = null, error = '';
 const buffers = {};
 
 // 埋め込み（data: URL）は fetch を使わずにバイト列にする（公開先の CSP で data: への fetch が止められるため）
@@ -19,7 +19,8 @@ export function prepareAudio() {
   if (ctx) return;
   try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { error = String(e); return; }
   master = ctx.createGain();
-  master.connect(ctx.destination);
+  duck = ctx.createGain();   // 画面が消えている間などに、全体を下げる（ミュートとは別）
+  master.connect(duck).connect(ctx.destination);
   for (const [p, url] of Object.entries(SFX_URLS)) {
     const name = p.split('/').pop().replace('.mp3', '');
     toArrayBuffer(url).then((ab) => ctx.decodeAudioData(ab)).then((b) => { buffers[name] = b; }).catch((e) => { error = `${name}: ${e}`; });
@@ -27,10 +28,13 @@ export function prepareAudio() {
 }
 export function resumeAudio() { if (ctx && ctx.state !== 'running') ctx.resume(); }
 export function setMuted(m) { if (master) master.gain.value = m ? 0 : 1; }
+export function setDuck(v, fade = 0.15) { if (duck) duck.gain.setTargetAtTime(v, ctx.currentTime, fade / 3); }
+// 音の時計（秒）。ループに合わせて鳴らすときに使う
+export function audioTime() { return ctx ? ctx.currentTime : 0; }
 export function audioState() { return { state: ctx?.state, loaded: Object.keys(buffers).length, error }; }
 
-// 鳴らす。pan -1..1。止まった状態で予約しても resume した瞬間に鳴る
-export function sfx(name, { gain = 1, offset = 0, loop = false, pan = 0 } = {}) {
+// 鳴らす。pan -1..1。at＝音の時計で鳴らす時刻（省略で今すぐ）。止まった状態で予約しても resume した瞬間に鳴る
+export function sfx(name, { gain = 1, offset = 0, loop = false, pan = 0, at = 0 } = {}) {
   if (!ctx || !buffers[name]) return null;
   const src = ctx.createBufferSource();
   src.buffer = buffers[name];
@@ -40,9 +44,10 @@ export function sfx(name, { gain = 1, offset = 0, loop = false, pan = 0 } = {}) 
   let node = src.connect(g);
   if (pan && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; node = node.connect(p); }
   node.connect(master);
-  src.start(0, Math.min(offset, src.buffer.duration - 0.01));
+  const start = Math.max(at, ctx.currentTime);
+  src.start(start, Math.min(offset, src.buffer.duration - 0.01));
   return {
-    gain: g,
+    gain: g, start,
     stop(fade = 0.06) { const t = ctx.currentTime; g.gain.setTargetAtTime(0, t, fade / 3); src.stop(t + fade + 0.05); },
   };
 }

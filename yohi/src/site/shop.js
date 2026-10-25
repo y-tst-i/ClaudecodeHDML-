@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { createCreature } from '../chara/creature.js';
 import { mulberry32 } from '../room/world.js';
-import { sfx } from '../audio.js';
+import { sfx, audioTime } from '../audio.js';
 
 // 場面3：夜の印刷工房。CLICK でレバーを引くたびに紙が機械を通って刷られる。
 // 1回目＝オレンジの版、2回目＝黒の版（ずれている）、3回目＝ガシャンと版が揃う → 機械が全開で回り、刷り上がりが一斉に舞う。
@@ -12,6 +12,9 @@ const PASS = 0.9;          // 1回刷るのにかかる秒（機械に入る →
 const EMERGE = { stand: 0.0, bulge: 0.45, tear: 1.35, land: 2.05 };   // 3回目の刷り上がり（presses[2] + PASS）からの秒
 const BURST_DELAY = PASS + 2.5;
 const N_FLY = 80;          // 舞う紙の枚数
+// G6「音を盗む」：全開から STEAL 秒後、紙から出たけものが印刷機の電線を噛む → ビートから低音（キック）だけが消え、
+// 胸が低音に合わせてふくらむ。クリックすると、次の8分音符で口から「ドン」を吐き、機械が一拍だけ跳ねる。4回吐いたら返す
+const STEAL = 4.2, GIVE_BACK = 4;
 
 export async function createShop(renderer, env) {
   const loader = new THREE.TextureLoader();
@@ -230,10 +233,32 @@ export async function createShop(renderer, env) {
   rim.position.set(-0.95, 2.0, -1.35);
   scene.add(rim);
 
+  // 印刷機の電源の電線：壁のコンセント → 床 → 右の側板を登って、機械の上へ。盗まれた低音が光の粒になって、けものの口へ流れる
+  const cablePath = new THREE.CatmullRomCurve3([[2.7, 0.42, -2.58], [2.5, 0.03, -2.2], [1.7, 0.03, -1.5], [1.24, 0.05, -0.92], [1.2, 0.5, -0.88], [1.19, 1.35, -0.86], [1.08, 1.6, -0.84], [0.86, 1.58, -0.82]].map((p) => new THREE.Vector3(...p)));
+  const cableU = { uFlow: { value: 0 }, uStolen: { value: 0 } };
+  const cableMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0c, roughness: 0.45, emissive: 0xc8ffe0, emissiveIntensity: 1 });
+  cableMat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, cableU);
+    sh.fragmentShader = 'uniform float uFlow, uStolen;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      // 拍ごとに、電線の根元から口の方へ光の粒が走る
+      float head = fract(uFlow);
+      float d = vUv.x - head;
+      totalEmissiveRadiance *= uStolen * (exp(-abs(d) * 25.0) * 3.0 + 0.12);`);
+  };
+  cableMat.defines = { USE_UV: '' };
+  add(new THREE.TubeGeometry(cablePath, 160, 0.024, 8, false), cableMat);
+  add(new THREE.BoxGeometry(0.1, 0.14, 0.03), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 }), 2.7, 0.42, -2.585);   // コンセント
+  const BITE = new THREE.Vector3(0.86, 1.6, -0.82);
+  // 吐いた「ドン」の輪（緑白、口から広がる）
+  const ring = add(new THREE.TorusGeometry(1, 0.012, 8, 64), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xc8ffe0).multiplyScalar(1.1), transparent: true, depthWrite: false }));
+  ring.visible = false;
+
   const camera = new THREE.PerspectiveCamera(36, 16 / 9, 0.1, 60);
   // 状態：押した時刻の一覧＋全開のあとの「触った記録」（クリック、風、長押し）
-  const st = { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, holdStart: 0, holdP: new THREE.Vector3(0, 1.4, 0.4), lastP: null, lastClick: -10 };
-  let groove = null, swirl = null;
+  const st = { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, holdStart: 0, holdP: new THREE.Vector3(0, 1.4, 0.4), lastP: null, lastClick: -10, dons: [], beatOff: 0 };
+  let grooveTop = null, grooveKick = null, swirl = null;
+  const stealAt = () => (burstAt() === null ? null : burstAt() + STEAL);
+  const stolen = () => stealAt() !== null && st.t >= stealAt() + 0.45 && st.dons.length < GIVE_BACK;
   const burstAt = () => (st.presses.length >= 3 ? st.presses[2] + BURST_DELAY : null);
   const raining = () => burstAt() !== null && st.t >= burstAt();
   const ease = (x) => x * x * (3 - 2 * x);
@@ -317,7 +342,28 @@ export async function createShop(renderer, env) {
     // もとのけもの：紙から仲間が出てきた瞬間にびっくりして跳ねる
     const surprised = e3 >= EMERGE.tear && sb < 0 ? e3 - EMERGE.tear : since;
     mon.update({ t, power: Math.min(1, spark * 0.8 + st.presses.length * 0.12 + st.hold * 0.8), sinceImpact: surprised, look: e3 >= EMERGE.tear && sb < 0 ? { x: 0.8, y: -0.5 } : look });
-    if (holder2.visible) mon2.update({ t: t + 1.7, power: Math.min(1, 0.3 + st.hold * 0.8), sinceImpact: sb < 0 ? -1 : since, look });
+    // G6：振り向いて電線を噛む（0〜0.45）→ 向き直る。盗んでいる間は、胸が低音の拍でふくらむ。吐くと跳ねる
+    const ss = stealAt() === null ? -1 : t - stealAt();
+    const lastDon = st.dons.length ? t - st.dons[st.dons.length - 1] : -1;   // 「ドン」からの秒（まだ鳴っていなければ負）
+    const bt = t + st.beatOff, beatPh = ((bt % 0.5) + 0.5) % 0.5;
+    const isStolen = ss >= 0.45 && st.dons.filter((d) => d <= t).length < GIVE_BACK;
+    let biting = 0;
+    if (holder2.visible && ss >= 0) {
+      const toward = ease(Math.min(1, ss / 0.3)) * (1 - ease(Math.min(1, Math.max(0, (ss - 0.9) / 0.4))));
+      holder2.rotation.y = -0.45 + (Math.PI / 2 + 0.45) * toward;
+      biting = ss > 0.25 && ss < 0.95 ? 1 : 0;
+    }
+    cableU.uStolen.value = isStolen ? 1 : 0;
+    cableU.uFlow.value = bt * 2 - 0.15;   // 1拍で根元から口まで
+    const donHop = lastDon >= 0 && lastDon < 0.35 ? Math.sin(lastDon / 0.35 * Math.PI) : 0;
+    press.position.y = donHop * 0.05;
+    ring.visible = lastDon >= 0 && lastDon < 0.7;
+    if (ring.visible) {
+      holder2.getWorldPosition(ring.position); ring.position.y += 0.3; ring.position.z += 0.1;
+      ring.scale.setScalar(0.08 + (1 - (1 - lastDon / 0.7) ** 3) * 0.75);
+      ring.material.opacity = 1 - lastDon / 0.7;
+    }
+    if (holder2.visible) mon2.update({ t: t + 1.7, power: Math.min(1, 0.3 + st.hold * 0.8 + (isStolen ? 0.4 : 0)), sinceImpact: lastDon >= 0 && lastDon < 1.2 ? lastDon : sb < 0 ? -1 : since, look: ss >= 0 && ss < 1.3 ? { x: 0, y: -0.3 } : look, chomp: biting, fat: isStolen ? 0.2 + 0.8 * Math.exp(-beatPh * 9) : 0 });
     const intro = Math.min(1, (t - st.enterAt) / 1.0), e = 1 - (1 - intro) ** 3;
     const shake = hit * 0.05;
     camera.position.set(look.x * 0.35 + Math.sin(t * 59) * shake, 2.0 + look.y * 0.15 + Math.cos(t * 47) * shake, 3.3 + 1.2 * e);
@@ -330,9 +376,15 @@ export async function createShop(renderer, env) {
     scene, camera,
     get hint() { return raining() ? 'CLICK / DRAG / HOLD' : 'CLICK'; },
     setQuality() {},
-    reset() { holder2.visible = false; Object.assign(st, { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, lastP: null, lastClick: -10 }); },
-    enter() { sfx('feed', { gain: 1.2 }); groove?.stop(); groove = sfx('groove', { gain: 0.6, loop: true }); },
-    leave() { groove?.stop(0.2); groove = null; swirl?.stop(); swirl = null; },
+    reset() { holder2.visible = false; Object.assign(st, { t: 0, enterAt: 0, presses: [], clicks: [], windX: 0, windV: 0, hold: 0, holding: false, lastP: null, lastClick: -10, dons: [], beatOff: 0 }); },
+    // ビートは「低音抜き」と「キックだけ」を同時に鳴らす（キックだけを、けものが盗める）
+    enter() {
+      sfx('feed', { gain: 1.2 });
+      this.leave();
+      grooveTop = sfx('groove_top', { gain: 0.6, loop: true });
+      grooveKick = sfx('groove_kick', { gain: 0.6, loop: true, at: grooveTop?.start ?? 0 });
+    },
+    leave() { grooveTop?.stop(0.2); grooveKick?.stop(0.2); grooveTop = grooveKick = null; swirl?.stop(); swirl = null; },
     down(ndc) {
       if (raining()) {
         // 衝撃波：押した所から紙がはじける
@@ -341,7 +393,14 @@ export async function createShop(renderer, env) {
         if (st.clicks.length > 8) st.clicks.shift();
         st.lastClick = st.t;
         st.holding = true; st.holdStart = st.t; st.holdP.copy(p); st.lastP = p.clone();
-        sfx('hit', { gain: 0.55 }); sfx('snap', { gain: 0.8 });
+        if (stolen() && st.dons.every((d) => d <= st.t)) {
+          // 次の8分音符で「ドン」（音も絵も同じ瞬間）
+          const now = audioTime(), T0 = grooveTop?.start ?? now;
+          const at = grooveTop ? T0 + Math.ceil((now - T0 - 0.02) / 0.25) * 0.25 : now;
+          st.dons.push(st.t + (at - now));
+          sfx('don', { gain: 1.1, at });
+          if (st.dons.length === GIVE_BACK) sfx('impact', { gain: 0.5, at: at + 0.25 });
+        } else { sfx('hit', { gain: 0.55 }); sfx('snap', { gain: 0.8 }); }
         return;
       }
       const n = st.presses.length;
@@ -373,6 +432,12 @@ export async function createShop(renderer, env) {
         if (at(EMERGE.tear)) { sfx('snap', { gain: 1.2 }); sfx('hit', { gain: 0.8 }); }
         if (at(EMERGE.land)) sfx('press1', { gain: 0.6 });   // 着地のドスッ
       }
+      // 音の時計と絵の時計のずれ（拍に合わせてふくらむため）
+      if (grooveTop) st.beatOff = (audioTime() - grooveTop.start) - st.t;
+      // 盗む／返す：キックだけの音を消す・戻す
+      const sa = stealAt();
+      if (sa !== null && prev < sa + 0.3 && st.t >= sa + 0.3) { sfx('snap', { gain: 1.0, pan: 0.3 }); sfx('chan', { gain: 0.5, pan: 0.3 }); }
+      if (grooveKick) grooveKick.gain.gain.value = 0.6 * (sa !== null && st.t >= sa + 0.3 && st.dons.filter((d) => d <= st.t).length < GIVE_BACK ? 0 : 1);
       // 風は吹いたあと弱まっていく。流された分は積み重なる
       st.windV *= Math.exp(-dt * 1.4);
       st.windX += st.windV * dt;
@@ -388,14 +453,15 @@ export async function createShop(renderer, env) {
     progress() { return burstAt() === null ? st.presses.length / 3 : 0; },
     busy() { if (raining()) return false; const n = st.presses.length; return n >= 3 || (n > 0 && st.t - st.presses[n - 1] < PASS); },
     draw,
-    state: () => ({ presses: st.presses.length, burst: raining(), hold: st.hold, clicks: st.clicks.length }),
+    state: () => ({ presses: st.presses.length, burst: raining(), hold: st.hold, clicks: st.clicks.length, stolen: stolen(), dons: st.dons.length }),
     // ?mode=render 用：0.8 / 1.8 / 2.8 秒に押す → 4.3 全開。6.0 に左でクリック、7.5〜 中央で長押し
     script(t) {
       this.reset();
       st.t = t; st.enterAt = -10; st.presses = [0.8, 1.8, 2.8].filter((p) => p <= t);
       const b = burstAt();
       if (b !== null && t >= 6.0) { st.clicks = [{ s: 6.0 - b, p: new THREE.Vector3(-1.2, 1.6, 0.4) }]; st.lastClick = 6.0; }
-      if (t >= 7.5) { st.hold = Math.min(1, (t - 7.5) / 0.8); st.holdP.set(0.4, 1.5, 0.4); }
+      if (t >= 7.5 && t < 9.5) { st.hold = Math.min(1, (t - 7.5) / 0.8); st.holdP.set(0.4, 1.5, 0.4); }
+      if (t >= 12.0) st.dons = [12.0];   // 6.2 全開 → 10.4 電線を噛む → 12.0 ドン
     },
     dust: null,
   };

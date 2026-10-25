@@ -37,7 +37,7 @@ export async function createRoom(renderer, env) {
   const HOME = new THREE.Vector3(0.32, 1.12, 1.0);
   const FRONT = new THREE.Vector3(-0.12, 0.0, 2.35);   // 画面の前の床に降りる
   const SCREEN = new THREE.Vector3(-0.15, 0.5, 1.6);   // 画面の表面（ここへ吸い込まれる）
-  const st = { t: 0, power: 0, impactAt: null, holding: false, sneezeAt: null, lastBite: 0 };
+  const st = { t: 0, power: 0, impactAt: null, holding: false, sneezeAt: null, lastBite: 0, secret: null };   // secret：{ i（テレビの番号）, at }
   const SNEEZE = 0.6;   // 満腹になってから、くしゃみ（＝衝撃）までの「ハ…ハ…」
   // G1「光を噛む」：主役の画面から、けものの口へ流れ込む光の粒（すべて同じ式で動かす）
   const N_BITE = 42;
@@ -59,19 +59,46 @@ export async function createRoom(renderer, env) {
     biteMesh.instanceMatrix.needsUpdate = true;
     biteMesh.visible = amount > 0.001;
   }
+  // 隠しチャンネル：消えているテレビを押すと、その1台に「そのテレビから見た部屋」が暗視カメラで映る。
+  // けものが気づいて振り向き、カメラ（＝そのテレビ）を覗き込む
+  const SECRET_LEN = 3.2;
+  const cctvRT = new THREE.WebGLRenderTarget(320, 240, { type: THREE.HalfFloatType });
+  const cctv = new THREE.PerspectiveCamera(24, 4 / 3, 0.05, 30);
+  const ir = new THREE.PointLight(0xffffff, 0, 7, 1.2);   // 暗視用の光（カメラ用に描く間だけ点ける）
+  world.scene.add(ir);
+  const ray = new THREE.Raycaster();
+  const screens = world.tvs.filter((tv) => !tv.hero).map((tv) => tv.screen);
   let charge = null;
   const ease = (x) => x * x * (3 - 2 * x);
+
+  // そのテレビの位置から、けものを撮る（その画面自身は元の映像に戻して描く＝自分を映し込まない）
+  const tmpV = new THREE.Vector3();
+  function renderSecret(tv) {
+    tv.screen.getWorldPosition(tmpV);
+    cctv.position.copy(tmpV).add(new THREE.Vector3(0, 0, 0.12));
+    cctv.lookAt(holder.position.x, holder.position.y + 0.32, holder.position.z);
+    ir.position.copy(cctv.position); ir.intensity = 7;
+    const u = tv.mat.uniforms, keep = u.uRT.value, wetOn = world.wet.visible;
+    u.uRT.value = tv.baseRT; world.wet.visible = false;
+    renderer.setRenderTarget(cctvRT);
+    renderer.render(world.scene, cctv);
+    renderer.setRenderTarget(null);
+    u.uRT.value = keep; world.wet.visible = wetOn; ir.intensity = 0;
+  }
 
   function draw(look) {
     const { t, power } = st;
     const since = st.impactAt === null ? -1 : t - st.impactAt;
-    const { hit } = world.update({ t, power, sinceImpact: since, bite: true });
+    const sec = st.secret && st.impactAt === null && t - st.secret.at < SECRET_LEN ? { tv: world.tvs[st.secret.i], since: t - st.secret.at } : null;
+    const { hit } = world.update({ t, power, sinceImpact: since, bite: true, secret: sec && { ...sec, texture: cctvRT.texture, len: SECRET_LEN } });
     // 噛む：押しているあいだ、うつむいて光を食べ、体がふくらむ。満腹で「ハ…ハ…」とのけぞり、くしゃみで全部のテレビへ光を吐き戻す
     const eating = st.impactAt === null && st.sneezeAt === null && st.holding && power > 0.02;
     const sneeze = st.sneezeAt !== null && st.impactAt === null ? Math.min(1, (t - st.sneezeAt) / (SNEEZE * 0.9)) : 0;
     const fat = st.impactAt === null ? power : Math.max(0, 1 - since * 4);
     placeBite(eating ? Math.min(1, power * 10) : 0, t);
-    mon.update({ t, power, sinceImpact: since, look: eating ? { x: -0.6, y: -0.6 } : look, chomp: eating ? 1 : 0, fat, sneeze });
+    // 覗き込む：首をかしげながら、すこし上目づかい
+    const peek = sec && !eating && sec.since > 0.7 ? { x: Math.sin(sec.since * 2.2) * 0.35, y: 0.25 } : null;
+    mon.update({ t, power, sinceImpact: since, look: eating ? { x: -0.6, y: -0.6 } : peek ?? look, chomp: eating ? 1 : 0, fat, sneeze });
     // ---- 飛び込み（衝撃から EXIT_WAIT 秒後。e = 飛び込みの経過秒）----
     // 0.00–0.55 テレビの上から画面の前の床へ跳び降りる
     // 0.55–0.90 画面の方を向いて、かがむ（溜め）
@@ -83,6 +110,15 @@ export async function createRoom(renderer, env) {
     holder.visible = true;
     if (e < 0) {
       holder.position.copy(HOME); holder.rotation.y = -0.25;
+      // 隠しチャンネル：0.35秒で気づいて振り向き（小さく跳ねる）、カメラを覗き込み、最後に向き直る
+      if (sec && !eating) {
+        const tp = sec.tv.group.position;
+        const face = Math.atan2(tp.x - HOME.x, tp.z - HOME.z);
+        let d = face - (-0.25); d = Math.atan2(Math.sin(d), Math.cos(d));
+        const k = sec.since, turn = ease(Math.min(1, Math.max(0, (k - 0.35) / 0.35))) * (1 - ease(Math.min(1, Math.max(0, (k - SECRET_LEN + 0.6) / 0.45))));
+        holder.rotation.y = -0.25 + d * turn;
+        holder.position.y += Math.max(0, Math.sin(Math.min(1, Math.max(0, (k - 0.35) / 0.3)) * Math.PI)) * 0.12;
+      }
     } else if (e < 0.55) {
       const k = seg(0, 0.55);
       holder.position.lerpVectors(HOME, FRONT, ease(k));
@@ -118,14 +154,23 @@ export async function createRoom(renderer, env) {
     camera.lookAt(target);
     camera.fov = 34 - dd * 8;
     camera.updateProjectionMatrix();
+    if (sec) renderSecret(sec.tv);
     return { hit, power, mask };
   }
 
   return {
     scene: world.scene, camera, hint: 'HOLD',
     setQuality: world.setQuality,
-    reset() { st.t = 0; st.power = 0; st.impactAt = null; st.holding = false; st.sneezeAt = null; st.lastBite = 0; holder.visible = true; world.hero.mat.uniforms.uRipple.value = -1; camera.fov = 34; camera.updateProjectionMatrix(); },
-    down() { st.holding = true; },
+    reset() { st.t = 0; st.power = 0; st.impactAt = null; st.holding = false; st.sneezeAt = null; st.lastBite = 0; st.secret = null; holder.visible = true; world.hero.mat.uniforms.uRipple.value = -1; camera.fov = 34; camera.updateProjectionMatrix(); },
+    down(ndc) {
+      st.holding = true;
+      if (st.impactAt !== null || !ndc || (st.secret && st.t - st.secret.at < SECRET_LEN)) return;
+      ray.setFromCamera(ndc, camera);
+      const h = ray.intersectObjects(screens, false)[0];
+      if (!h) return;
+      st.secret = { i: world.tvs.findIndex((tv) => tv.screen === h.object), at: st.t };
+      sfx('chan', { gain: 0.9 });
+    },
     up() { st.holding = false; charge?.stop(0.08); charge = null; },
     move() {},
     // 1コマ分すすめる。戻り値 'exit' で次の場面へ
@@ -158,12 +203,17 @@ export async function createRoom(renderer, env) {
     progress() { return st.impactAt === null ? st.power : 0; },
     busy() { return st.impactAt !== null; },
     draw,
-    state: () => ({ power: st.power, impacted: st.impactAt !== null }),
+    state: () => ({ power: st.power, impacted: st.impactAt !== null, secret: st.secret ? st.t - st.secret.at : null }),
+    // 確認用：i 番目の消えたテレビを押したことにする
+    poke(i = 0) { st.secret = { i: world.tvs.indexOf(world.tvs.filter((tv) => !tv.hero)[i]), at: st.t }; },
     // ?mode=render 用：台本どおりに state を置く
     script(t) {
       const k = Math.max(0, Math.min(1, (t - 0.6) / 2.4));
       st.t = t; st.power = k * k * (3 - 2 * k); st.holding = t > 0.6 && t < 3.0;
       st.sneezeAt = t >= 3.0 ? 3.0 : null; st.impactAt = t >= 3.0 + SNEEZE ? 3.0 + SNEEZE : null;
+      // ?secret=N：溜めずに、0.3秒に N 番目の消えたテレビを押す（隠しチャンネルの確認用）
+      const sp = new URLSearchParams(location.search).get('secret');
+      if (sp !== null) { st.power = 0; st.holding = false; st.sneezeAt = null; st.impactAt = null; this.poke(Number(sp)); st.secret.at = 0.3; }
     },
     dust: world.tex.dust,
   };

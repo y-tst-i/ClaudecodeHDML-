@@ -53,6 +53,27 @@ void main(){
   gl_FragColor = vec4(max(col, 0.0), 1.0);
 }`;
 
+// ブラウン管の電源オフ：画面が横一線につぶれ → 点に縮み → 消える（uOff 0..1。戻るときは逆再生）
+const offFrag = /* glsl */ `
+uniform sampler2D tDiffuse;
+uniform float uOff;
+uniform vec2 uRes;
+varying vec2 vUv;
+void main(){
+  if (uOff <= 0.0) { gl_FragColor = texture2D(tDiffuse, vUv); return; }
+  float a = clamp(uOff / 0.45, 0.0, 1.0), b = clamp((uOff - 0.45) / 0.35, 0.0, 1.0), c = clamp((uOff - 0.8) / 0.2, 0.0, 1.0);
+  float sy = mix(1.0, 0.003, pow(a, 0.55)), sx = mix(1.0, 0.002, pow(b, 0.8));
+  vec2 q = (vUv - 0.5) / vec2(sx, sy) + 0.5;
+  vec2 px = 1.5 / uRes;
+  float inside = smoothstep(sx * 0.5 + px.x, sx * 0.5 - px.x, abs(vUv.x - 0.5)) * smoothstep(sy * 0.5 + px.y, sy * 0.5 - px.y, abs(vUv.y - 0.5));
+  vec3 col = texture2D(tDiffuse, clamp(q, 0.0, 1.0)).rgb;
+  col = mix(col, vec3(0.8, 1.0, 0.9) * 1.6, smoothstep(0.3, 1.0, a));        // つぶれるほど、緑白に光る
+  col *= inside;
+  vec2 d = (vUv - 0.5) * vec2(uRes.x / uRes.y, 1.0);
+  col += vec3(0.8, 1.0, 0.9) * (exp(-abs(d.y) * 400.0) * exp(-abs(d.x) / max(sx, 0.01) * 3.0) * a * (1.0 - b) * 0.6 + exp(-length(d) * 90.0) * b * 1.8);
+  gl_FragColor = vec4(col * (1.0 - c), 1.0);
+}`;
+
 export function createPost(renderer, scene, camera, dustTex) {
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(scene, camera);
@@ -65,12 +86,19 @@ export function createPost(renderer, scene, camera, dustTex) {
     fragmentShader: lensFrag,
   });
   composer.addPass(lens);
+  const off = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, uOff: { value: 0 }, uRes: { value: new THREE.Vector2(1920, 1080) } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: offFrag,
+  });
+  composer.addPass(off);
   composer.addPass(new OutputPass());
   return {
     // 場面を切り替える（仕上げの効果はそのまま共通で使う）
     setView(scene, camera) { renderPass.scene = scene; renderPass.camera = camera; },
-    setSize(w, h) { composer.setSize(w, h); lens.uniforms.uRes.value.set(w, h); },
-    render({ t, hit, power, mask = 0, wipe = 0 }) {
+    setSize(w, h) { composer.setSize(w, h); lens.uniforms.uRes.value.set(w, h); off.uniforms.uRes.value.set(w, h); },
+    render({ t, hit, power, mask = 0, wipe = 0, tvOff = 0 }) {
+      off.uniforms.uOff.value = tvOff;
       lens.uniforms.uMask.value = mask;
       lens.uniforms.uWipe.value = wipe;
       bloom.strength = 0.7 + power * 0.4 + hit * 0.5;

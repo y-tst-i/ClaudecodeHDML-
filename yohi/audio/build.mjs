@@ -214,6 +214,13 @@ function stutter(t0, t1, slot) {
 }
 
 // ---------- 譜面（film.js と同じ時刻） ----------
+// ブラウン管の電源オフ：高い「キーン」（水平の発振）が落ちていき、ボンと消える
+function tvOff(t0, g = 1) {
+  let ph = 0;
+  play(t0, 0.6, (t) => { ph += 2 * Math.PI * (200 + 15400 * Math.exp(-t / 0.09)) / SR; return Math.sin(ph) * 0.35 * Math.exp(-t / 0.16); }, { gain: 0.5 * g, rev: 0.1 });
+  snap(t0, 0.5 * g);
+  sub(t0, 0.35 * g, 0.3, 58);
+}
 function score() {
 // C1 SIGNAL 0–3
 powerOn(0);
@@ -326,8 +333,14 @@ const SFX = [
   ['drop', 1.6, () => { whoosh(0, 0.3); kick(0.3, 1.2, 0.6); sub(0.3, 0.9, 1.2); }],
   ['ticks', 0.8, () => { for (let k = 0; k < 16; k++) tick(0.01 + k * 0.03, 0.6 + k * 0.03, k / 7.5 - 1); }],
   ['final', 3.0, () => impact(0.01, 1.1)],
-  // ビートのループ（1小節 = 2秒、120BPM）
+  ['off', 0.7, () => tvOff(0.005)],
+  ['chan', 0.45, () => { glitch(0.005, 2); tick(0.005, 1.2); tick(0.05, 0.8); }],
+  // 盗んだ低音を口から吐く「ドン」
+  ['don', 1.2, () => { kick(0.005, 1.4, 0.6); sub(0.005, 1.0, 0.9, 49); }],
+  // ビートのループ（1小節 = 2秒、120BPM）。groove＝全部、groove_top＝低音（キック）抜き、groove_kick＝キックだけ（同時に鳴らすと groove と同じ）
   ['groove', 2.0, () => { for (let b = 0; b < 2; b += BEAT) { kick(b, 0.85); hat(b + 0.25); } clap(0.5); clap(1.5); for (let b = 0; b < 2; b += 0.125) hat(b, 0.35); }],
+  ['groove_top', 2.0, () => { for (let b = 0; b < 2; b += BEAT) hat(b + 0.25); clap(0.5); clap(1.5); for (let b = 0; b < 2; b += 0.125) hat(b, 0.35); }],
+  ['groove_kick', 2.0, () => { for (let b = 0; b < 2; b += BEAT) kick(b, 0.85); }],
 ];
 if (process.argv.includes('--sfx')) {
   const dir = path.join(here, '../assets/audio/sfx');

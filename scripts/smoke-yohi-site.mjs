@@ -19,7 +19,13 @@ const state = () => page.evaluate(() => window.__site.state());
 const until = (fn, ms = 240000) => page.waitForFunction(fn, null, { timeout: ms, polling: 200 });
 const shot = (n) => page.screenshot({ path: `out/yohi-site/smoke/${n}.png` });
 
-// 場面1：長押しで溜めきる → けものが画面に飛び込む → 路地へ
+// 場面1：消えているテレビを押す → 隠しチャンネル（暗視カメラ）が点く
+await page.mouse.click(1040, 360);
+await page.waitForTimeout(300);
+const sec = (await state()).secret;
+console.log(sec !== null ? '✓ 部屋：隠しチャンネルが点く' : '△ 部屋：押した所にテレビがなかった（隠しチャンネルは未確認）');
+if (sec !== null) { await until(() => window.__site.state().secret > 1.5, 60000); await shot('room-secret'); }
+// 長押しで溜めきる → けものが画面に飛び込む → 路地へ
 await page.mouse.move(640, 360);
 await page.mouse.down();
 await until(() => window.__site.state().impacted);
@@ -39,7 +45,8 @@ for (let i = 0; i < 400 && !(await state()).completed; i++) {
 }
 await page.mouse.up();
 const s = await state();
-console.log(`✓ 路地：塗った量 ${(s.coverage * 100).toFixed(0)}%（点 ${s.points}）`);
+console.log(`✓ 路地：塗った量 ${(s.coverage * 100).toFixed(0)}%（点 ${s.points}）・影が舐めた ${s.licks} 回（t=${s.t?.toFixed?.(1)}）`);
+if (!s.shadowOut || s.licks < 1) throw new Error('影が這い出していない');
 await until(() => window.__site.state().completed);
 console.log('✓ 路地：タグが完成');
 await until(() => window.__site.state().scene === 2);
@@ -58,12 +65,26 @@ console.log('✓ 印刷工房：全開で刷り上がりが舞う');
 await shot('shop-burst');
 await until(() => !document.getElementById('replay').hidden, 120000);
 await shot('alley-done');
+// 音を盗む：けものが電線を噛んだら、クリックで「ドン」
+await until(() => window.__site.state().stolen, 120000);
+await page.mouse.click(400, 300);
+await until(() => window.__site.state().dons >= 1, 30000);
+console.log('✓ 印刷工房：低音を盗まれて、クリックで「ドン」');
+await page.waitForTimeout(400);
+await shot('shop-don');
+// 電源オフ：マウスが画面の外に出ると消える → 動かすと点く
+await page.evaluate(() => document.documentElement.dispatchEvent(new PointerEvent('pointerleave')));
+await until(() => window.__site.state().tvOff >= 1, 60000);
+await shot('tv-off');
+await page.mouse.move(600, 300);
+await until(() => window.__site.state().tvOff === 0, 60000);
+console.log('✓ 画面の外へ出ると消え、戻ると点く');
 await page.click('#replay');
 await until(() => window.__site.state().scene === 0 && !window.__site.state().impacted);
 console.log('✓ REPLAY で部屋に戻る');
 const audio = (await state()).audio;
 console.log('audio:', JSON.stringify(audio));
-if (audio.loaded !== 20 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
+if (audio.loaded !== 25 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
 await browser.close();
 server.close();
 if (errors.length) { console.error('エラー:', [...new Set(errors)]); process.exit(1); }

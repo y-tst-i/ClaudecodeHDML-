@@ -5,7 +5,7 @@ import { createPost } from '../room/post.js';
 import { createRoom } from './room.js';
 import { createAlley } from './alley.js';
 import { createShop } from './shop.js';
-import { prepareAudio, resumeAudio, sfx, setMuted, audioState } from '../audio.js';
+import { prepareAudio, resumeAudio, sfx, setMuted, setDuck, audioState } from '../audio.js';
 
 // YOHI の体験型サイト（複数の場面）。場面1：ブラウン管の部屋 → 場面2：夜の路地 → 部屋へ戻る。
 // 共通：描画・仕上げの効果・音・UI・自動の画質調整。場面ごとの絵は state の純関数。
@@ -37,9 +37,9 @@ function fit() {
   for (const s of scenes) { s.camera.aspect = 16 / 9; s.camera.updateProjectionMatrix(); }
 }
 fit();
-function render(t, look) {
+function render(t, look, tvOff = 0) {
   const { hit, power, mask = 0, wipe = 0 } = scenes[cur].draw(look);
-  post.render({ t, hit, power, mask, wipe });
+  post.render({ t, hit, power, mask, wipe, tvOff });
 }
 
 if (RENDER) {
@@ -58,7 +58,14 @@ if (RENDER) {
   };
   const surface = $('screen');
   let lastX = 0, lastY = 0;
+  // 放っておく（15秒）か、マウスが画面の外に出ると、サイト全体がブラウン管のように消える。触ると点く
+  const IDLE_OFF = 15, AWAY_OFF = 0.8, OFF_LEN = 0.55, ON_LEN = 0.35;
+  let idle = 0, away = false, awayFor = 0, tvOff = 0, offTarget = 0, offShown = false;
+  const wake = () => { idle = 0; away = false; awayFor = 0; };
+  document.documentElement.addEventListener('pointerleave', () => { away = true; });
+  addEventListener('blur', () => { away = true; });
   surface.addEventListener('pointerdown', (e) => {
+    wake();
     resumeAudio();
     if (!started) { started = true; sfx('power', { gain: 0.8 }); }
     surface.setPointerCapture(e.pointerId);
@@ -69,18 +76,19 @@ if (RENDER) {
   surface.addEventListener('pointerup', up);
   surface.addEventListener('pointercancel', up);
   addEventListener('pointermove', (e) => {
+    wake();
     lookTarget.x = e.clientX / innerWidth * 2 - 1; lookTarget.y = -(e.clientY / innerHeight * 2 - 1);
     const d = Math.hypot(e.clientX - lastX, e.clientY - lastY);
     lastX = e.clientX; lastY = e.clientY;
     scenes[cur].move(toNdc(e), d);
   });
-  addEventListener('keydown', (e) => { if (e.code === 'Space' && !e.repeat && e.target.tagName !== 'BUTTON') { e.preventDefault(); resumeAudio(); started = true; scenes[cur].down(new THREE.Vector2(0, 0)); } });
+  addEventListener('keydown', (e) => { wake(); if (e.code === 'Space' && !e.repeat && e.target.tagName !== 'BUTTON') { e.preventDefault(); resumeAudio(); started = true; scenes[cur].down(new THREE.Vector2(0, 0)); } });
   addEventListener('keyup', (e) => { if (e.code === 'Space') up(); });
   $('sound').addEventListener('click', () => { muted = !muted; setMuted(muted); $('sound').textContent = muted ? 'SOUND OFF' : 'SOUND ON'; });
   $('replay').addEventListener('click', () => { ended = false; $('replay').hidden = true; scenes[cur].leave?.(); scenes[0].reset(); use(0); ui(); });
   function ui() {
     $('count').textContent = `${String(cur + 1).padStart(2, '0')} / ${String(scenes.length).padStart(2, '0')}`;
-    $('hint').textContent = scenes[cur].busy() ? '' : scenes[cur].hint;   // 最後の場面は終わっても遊べる（REPLAY と並べて操作を出す）
+    $('hint').textContent = tvOff > 0.5 ? 'MOVE' : scenes[cur].busy() ? '' : scenes[cur].hint;   // 最後の場面は終わっても遊べる（REPLAY と並べて操作を出す）
   }
   ui();
 
@@ -103,6 +111,13 @@ if (RENDER) {
     const raw = (now - last) / 1000, dt = Math.min(0.05, raw);
     last = now;
     measure(raw, now);
+    // 電源オフ／オン（場面が自動で進んでいる最中は消さない）
+    idle += dt; awayFor = away ? awayFor + dt : 0;
+    const want = started && !scenes[cur].busy() && (idle > IDLE_OFF || awayFor > AWAY_OFF) ? 1 : 0;
+    if (want !== offTarget) { offTarget = want; if (want) { sfx('off', { gain: 0.9 }); setDuck(0.12, 0.4); } else { sfx('power', { gain: 0.5 }); setDuck(1, 0.2); } }
+    tvOff = offTarget ? Math.min(1, tvOff + dt / OFF_LEN) : Math.max(0, tvOff - dt / ON_LEN);
+    if (tvOff >= 1) { if (!offShown) render(t, look, 1); offShown = true; requestAnimationFrame(frame); return; }   // 消えている間は時間を止め、描かない
+    offShown = false;
     t += dt;
     const ev = started ? scenes[cur].tick(dt) : null;
     // 'exit'：次の場面へ（前の場面の音を止め、次の場面を最初から始める）
@@ -112,9 +127,9 @@ if (RENDER) {
     look.y += (lookTarget.y - look.y) * Math.min(1, dt * 3);
     $('bar').style.transform = `scaleX(${started ? scenes[cur].progress() : 0})`;
     ui();
-    render(t, look);
+    render(t, look, tvOff);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
-  window.__site = { state: () => ({ started, scene: cur, ended, busy: scenes[cur].busy(), ...scenes[cur].state(), quality: QUALITY[quality].name, audio: audioState() }) };
+  window.__site = { state: () => ({ started, tvOff, scene: cur, ended, busy: scenes[cur].busy(), ...scenes[cur].state(), quality: QUALITY[quality].name, audio: audioState() }) };
 }
