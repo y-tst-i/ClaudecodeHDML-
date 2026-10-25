@@ -34,20 +34,22 @@ export function audioTime() { return ctx ? ctx.currentTime : 0; }
 export function audioState() { return { state: ctx?.state, loaded: Object.keys(buffers).length, error }; }
 
 // 鳴らす。pan -1..1。at＝音の時計で鳴らす時刻（省略で今すぐ）。止まった状態で予約しても resume した瞬間に鳴る
-export function sfx(name, { gain = 1, offset = 0, loop = false, pan = 0, at = 0 } = {}) {
+export function sfx(name, { gain = 1, offset = 0, loop = false, pan = 0, at = 0, lowpass = 0 } = {}) {
   if (!ctx || !buffers[name]) return null;
   const src = ctx.createBufferSource();
   src.buffer = buffers[name];
   src.loop = loop;
   const g = ctx.createGain();
   g.gain.value = gain;
-  let node = src.connect(g);
+  let node = src.connect(g), filter = null;
+  // lowpass：こもった音（壁の向こう・画面の向こう）。filter.frequency を動かして澄ませる
+  if (lowpass) { filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = lowpass; node = node.connect(filter); }
   if (pan && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; node = node.connect(p); }
   node.connect(master);
   const start = Math.max(at, ctx.currentTime);
   src.start(start, Math.min(offset, src.buffer.duration - 0.01));
   return {
-    gain: g, start,
+    gain: g, start, filter,
     stop(fade = 0.06) { const t = ctx.currentTime; g.gain.setTargetAtTime(0, t, fade / 3); src.stop(t + fade + 0.05); },
   };
 }

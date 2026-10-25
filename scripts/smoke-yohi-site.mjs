@@ -32,7 +32,19 @@ await until(() => window.__site.state().impacted);
 await page.mouse.up();
 console.log('✓ 部屋：溜めきって衝撃');
 await until(() => window.__site.state().scene === 1);
-console.log('✓ 部屋 → 路地へ切り替わる');
+console.log('✓ 部屋 → 巻き取りへ切り替わる');
+// 場面2：スクロールで縦の同期を合わせる → 絵が紙になって引き出される → 路地へ
+await page.mouse.move(640, 360);
+for (let i = 0; i < 80 && !(await state()).locked; i++) {
+  const off = (await state()).off ?? 0;
+  await page.mouse.wheel(0, Math.max(-400, Math.min(400, -off / 0.0006 * 0.9)));
+  await page.waitForTimeout(400);
+}
+await until(() => window.__site.state().locked, 60000);
+await shot('tune-locked');
+console.log('✓ 巻き取り：スクロールで絵が止まる');
+await until(() => window.__site.state().scene === 2);
+console.log('✓ 巻き取り → 路地へ（紙に飛び込む）');
 await shot('alley-enter');
 
 // 場面2：壁をジグザグにドラッグして塗る → タグが完成
@@ -49,7 +61,7 @@ console.log(`✓ 路地：塗った量 ${(s.coverage * 100).toFixed(0)}%（点 $
 if (!s.shadowOut || s.licks < 1) throw new Error('影が這い出していない');
 await until(() => window.__site.state().completed);
 console.log('✓ 路地：タグが完成');
-await until(() => window.__site.state().scene === 2);
+await until(() => window.__site.state().scene === 3);
 console.log('✓ 路地 → 印刷工房へ切り替わる（紙が横切る）');
 await shot('shop-enter');
 
@@ -67,12 +79,12 @@ await shot('shop-burst');
 await until(() => window.__site.state().stolen, 180000);
 for (let k = 1; k <= 4; k++) {
   await page.mouse.click(400 + k * 60, 300);
-  await page.waitForFunction((n) => window.__site.state().dons >= n || window.__site.state().scene === 3, k, { timeout: 30000, polling: 200 });
+  await page.waitForFunction((n) => window.__site.state().dons >= n || window.__site.state().scene === 4, k, { timeout: 30000, polling: 200 });
   if (k === 1) { await page.waitForTimeout(300); await shot('shop-don'); }
-  await until(() => window.__site.state().scene === 3 || window.__site.state().donReady, 30000);
+  await until(() => window.__site.state().scene === 4 || window.__site.state().donReady, 30000);
 }
 console.log('✓ 印刷工房：低音を盗まれて、クリックで「ドン」を4回');
-await until(() => window.__site.state().scene === 3, 240000);
+await until(() => window.__site.state().scene === 4, 240000);
 console.log('✓ 印刷工房 → エンディングへ');
 await until(() => !document.getElementById('replay').hidden, 240000);
 const saveShown = await page.evaluate(() => !document.getElementById('save').hidden);
