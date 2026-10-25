@@ -7,6 +7,7 @@ import { createAlley } from './alley.js';
 import { createShop } from './shop.js';
 import { createEnd } from './end.js';
 import { createTune } from './tune.js';
+import { createWire } from './wire.js';
 import { prepareAudio, resumeAudio, sfx, setMuted, setDuck, audioState } from '../audio.js';
 
 // YOHI の体験型サイト（複数の場面）。場面1：ブラウン管の部屋 → 場面2：夜の路地 → 部屋へ戻る。
@@ -32,12 +33,16 @@ const grab = (s) => {
   if (i < 0) return;
   const c = shots[i] ?? document.createElement('canvas');
   c.width = 640; c.height = 360;
-  c.getContext('2d').drawImage(renderer.domElement, 0, 0, 640, 360);
+  // 画面の真ん中の 16:9 を切り出す（縦長の画面でも絵が歪まないように）
+  const W = renderer.domElement.width, H = renderer.domElement.height;
+  const cw = Math.min(W, H * 16 / 9), ch = cw * 9 / 16;
+  c.getContext('2d').drawImage(renderer.domElement, (W - cw) / 2, (H - ch) / 2, cw, ch, 0, 0, 640, 360);
   shots[i] = c;
 };
 const end = await createEnd(renderer, env, { getShots: () => shots, getSpray: () => alley.paintCanvas });
-const scenes = [room, tune, alley, shop, end];
-const NAMES = ['room', 'tune', 'alley', 'shop', 'end'];
+const wire = await createWire(renderer, env, { getPoster: () => end.prepare() });
+const scenes = [room, tune, alley, shop, wire, end];
+const NAMES = ['room', 'tune', 'alley', 'shop', 'wire', 'end'];
 let cur = Math.max(0, NAMES.indexOf(params.get('scene') ?? 'room'));
 const post = createPost(renderer, scenes[0].scene, scenes[0].camera, scenes[0].dust);
 const use = (i) => { cur = i; post.setView(scenes[i].scene, scenes[i].camera); };
@@ -45,25 +50,42 @@ use(cur);
 
 const QUALITY = [{ name: 'HIGH', scale: 1, dpr: 2 }, { name: 'MID', scale: 0.72, dpr: 1.25 }, { name: 'LOW', scale: 0.5, dpr: 1 }];
 let quality = 0;
+// 画面いっぱいに描く。横長は 16:9 の上下を切り、縦長（スマホ）は 16:9 の横幅を全部見せて上下を広げる
+let aspect = 16 / 9;
 function fit() {
   const Q = QUALITY[quality];
-  const w = RENDER ? 1920 : Math.min(innerWidth, innerHeight * 16 / 9) * Q.scale, dpr = RENDER ? 1 : Math.min(devicePixelRatio || 1, Q.dpr);
-  const pw = Math.min(1920, Math.round(w * dpr)), ph = Math.round(pw * 9 / 16);
+  aspect = RENDER ? 16 / 9 : innerWidth / innerHeight;
+  const cssW = RENDER ? 1920 : innerWidth, cssH = RENDER ? 1080 : innerHeight;
+  const dpr = RENDER ? 1 : Math.min(devicePixelRatio || 1, Q.dpr) * Q.scale;
+  let pw = Math.round(cssW * dpr), ph = Math.round(cssH * dpr);
+  const k = Math.min(1, 1920 * 1080 / (pw * ph));   // 描く画素は 1920×1080 ぶんまで
+  pw = Math.round(pw * Math.sqrt(k)); ph = Math.round(ph * Math.sqrt(k));
   renderer.setSize(pw, ph, false);
   post.setSize(pw, ph);
-  for (const s of scenes) { s.camera.aspect = 16 / 9; s.camera.updateProjectionMatrix(); }
 }
 fit();
 function render(t, look, tvOff = 0) {
   const { hit, power, mask = 0, wipe = 0 } = scenes[cur].draw(look);
+  // 場面のカメラは 16:9 で設計してある。縦長の画面では横の見える幅を保つように画角を広げる（描いたら元に戻す）
+  // （場面が自分で画角を変えたら、それを新しい基準にする。マウスで指す計算も同じ画角で行うので、描いたあとも戻さない）
+  const cam = scenes[cur].camera;
+  const base = cam.fov !== cam.userData.adj ? cam.fov : cam.userData.base;
+  cam.userData.base = base;
+  // 縦長（スマホ）は横幅の6割を見せる（全部見せると主役が小さくなりすぎる）。左右の端は切れる
+  const keepW = aspect < 1 ? 0.6 : 1;
+  cam.fov = aspect < 16 / 9 ? Math.max(base, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(base) / 2) * (16 / 9) * keepW / aspect))) : base;
+  cam.userData.adj = cam.fov;
+  cam.aspect = aspect;
+  cam.updateProjectionMatrix();
   post.render({ t, hit, power, mask, wipe, tvOff });
 }
 
 if (RENDER) {
+  document.body.classList.add('ready');
   // エンディングの確認用：各場面を台本の見せ場の時刻で1コマずつ描いて撮る
   const SHOT_T = [3.95, 5.0, 7.4];
   window.__seek = (t) => {
-    if (scenes[cur] === end && !shots[0]) { shotScenes.forEach((s, i) => { use(scenes.indexOf(s)); s.script(SHOT_T[i]); render(SHOT_T[i], { x: 0, y: 0 }); grab(s); }); use(scenes.indexOf(end)); }
+    if ((scenes[cur] === end || scenes[cur] === wire) && !shots[0]) { shotScenes.forEach((s, i) => { use(scenes.indexOf(s)); s.script(SHOT_T[i]); render(SHOT_T[i], { x: 0, y: 0 }); grab(s); }); use(NAMES.indexOf(params.get('scene'))); }
     scenes[cur].script(t); render(t, { x: 0, y: 0 });
   };
   window.__showreel = { fps: 30, duration: 6, seek: (t) => (window.__seek(t), renderer.domElement.toDataURL('image/png')) };
@@ -168,5 +190,6 @@ if (RENDER) {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+  document.body.classList.add('ready');   // 読み込み表示を消す
   window.__site = { state: () => ({ started, tvOff, scene: cur, ended, busy: scenes[cur].busy(), ...scenes[cur].state(), quality: QUALITY[quality].name, audio: audioState() }) };
 }

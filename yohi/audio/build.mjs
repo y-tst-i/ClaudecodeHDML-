@@ -272,6 +272,23 @@ function crackle(t0, dur, g = 1) {
 }
 function snare(t0, g = 1) { clap(t0, 0.9 * g); const f = biquad(); play(t0, 0.2, (t) => f(noise(), 'hp', 1800) * Math.exp(-t / 0.05), { gain: 0.25 * g, rev: 0.3 }); }
 
+// 張った電線を弾く音：Karplus-Strong（雑音を短い遅延でくり返して弦にする）＋低い唸り。太い電線なので低く、長く鳴る
+function wire(t0, fr, g = 1) {
+  const n = Math.round(SR / fr), buf = new Float32Array(n);
+  for (let i = 0; i < n; i++) buf[i] = noise();
+  let i = 0;
+  play(t0, 3.0, (t) => { const y = buf[i], z = buf[(i + 1) % n]; buf[i] = (y + z) * 0.5 * 0.9985; i = (i + 1) % n; return y * Math.min(1, t / 0.002); }, { gain: 0.55 * g, rev: 0.35 });
+  let ph = 0;
+  play(t0, 2.5, (t) => { ph += fr / SR; return Math.tanh(Math.sin(2 * Math.PI * ph) * 2) * env(t, 0.004, 0.7); }, { gain: 0.2 * g, rev: 0.1 });
+  hum(t0, t0 + 0.6);
+}
+// 電線をつなぐ「ジッ」：上がっていく電気の音＋火花
+function zip(t0) {
+  let ph = 0;
+  play(t0, 0.35, (t) => { ph += (200 + 3000 * t / 0.35) / SR; return saw(ph) * Math.exp(-t / 0.12) * (rnd() > 0.7 ? 1 : 0.4); }, { gain: 0.12, rev: 0.15 });
+  snap(t0 + 0.3, 0.6);
+}
+
 // BGM（8秒＝4小節のループ）。off から1周ぶんを描く。3周描いて真ん中を切り出すので、残響がつなぎ目でも途切れない
 const BGM = {
   // 部屋：暗いパッドと、ブラウン管の唸り。たまに高い「ピン」
@@ -432,6 +449,8 @@ const SFX = [
   ['ticks', 0.8, () => { for (let k = 0; k < 16; k++) tick(0.01 + k * 0.03, 0.6 + k * 0.03, k / 7.5 - 1); }],
   ['final', 3.0, () => impact(0.01, 1.1)],
   ['off', 0.7, () => tvOff(0.005)],
+  ...[HZ.E2, HZ.G2, HZ.A2, HZ.B2, HZ.D3, HZ.E3].map((fr, k) => [`wire${k}`, 3.0, () => wire(0.005, fr)]),
+  ['zip', 0.6, () => zip(0.005)],
   ['chan', 0.45, () => { glitch(0.005, 2); tick(0.005, 1.2); tick(0.05, 0.8); }],
   // 盗んだ低音を口から吐く「ドン」
   ['don', 1.2, () => { kick(0.005, 1.4, 0.6); sub(0.005, 1.0, 0.9, 49); }],

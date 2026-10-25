@@ -85,7 +85,22 @@ for (let k = 1; k <= 4; k++) {
 }
 console.log('✓ 印刷工房：低音を盗まれて、クリックで「ドン」を4回');
 await until(() => window.__site.state().scene === 4, 240000);
-console.log('✓ 印刷工房 → エンディングへ');
+console.log('✓ 印刷工房 → 夜を縫う線へ');
+// 場面5：端子を2つずつ選んで、電線を3本張る
+const box = await page.evaluate(() => { const r = document.querySelector('#screen canvas').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+const px = ([x, y]) => [box.x + (x + 1) / 2 * box.w, box.y + (1 - y) / 2 * box.h];
+for (const [k, [a, b]] of [[0, 5], [2, 7], [4, 3]].entries()) {
+  await page.waitForTimeout(1500);
+  const terms = (await state()).terms;
+  await page.mouse.click(...px(terms[a]));
+  await page.waitForFunction((a) => window.__site.state().sel === a, a, { timeout: 30000, polling: 200 });
+  await page.mouse.click(...px(terms[b]));
+  await page.waitForFunction((n) => window.__site.state().wires >= n, k + 1, { timeout: 30000, polling: 200 });
+  if (k === 1) await shot('wire-two');
+}
+console.log('✓ 夜を縫う線：3本張って、紙が組み上がる');
+await until(() => window.__site.state().scene === 5, 240000);
+console.log('✓ 夜を縫う線 → エンディングへ');
 await until(() => !document.getElementById('replay').hidden, 240000);
 const saveShown = await page.evaluate(() => !document.getElementById('save').hidden);
 if (!saveShown) throw new Error('SAVE が出ていない');
@@ -103,7 +118,7 @@ await until(() => window.__site.state().scene === 0 && !window.__site.state().im
 console.log('✓ REPLAY で部屋に戻る');
 const audio = (await state()).audio;
 console.log('audio:', JSON.stringify(audio));
-if (audio.loaded !== 31 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
+if (audio.loaded !== 38 || audio.error || audio.state !== 'running') throw new Error(`音が準備できていない: ${JSON.stringify(audio)}`);
 await browser.close();
 server.close();
 if (errors.length) { console.error('エラー:', [...new Set(errors)]); process.exit(1); }

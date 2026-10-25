@@ -9,7 +9,15 @@
       :root { --fg: #fff; --bg: #000; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace; }
       html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
       #screen { position: fixed; inset: 0; display: grid; place-items: center; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; }
-      #screen canvas { width: min(100vw, calc(100vh * 16 / 9)); height: auto; aspect-ratio: 16 / 9; display: block; }
+      #screen canvas { width: 100vw; height: 100vh; height: 100dvh; display: block; }
+      /* 読み込み中：中央に LOADING と細い線だけ（準備ができたら消える） */
+      #loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--fg); font: 600 12px/16px var(--mono); letter-spacing: 0; transition: opacity 0.4s; pointer-events: none; }
+      #loading div { display: grid; justify-items: center; gap: 8px; }
+      #loading i { display: block; width: 64px; height: 1px; background: rgba(255, 255, 255, 0.3); overflow: hidden; }
+      #loading i::after { content: ""; display: block; width: 16px; height: 1px; background: var(--fg); animation: load 1s linear infinite; }
+      @keyframes load { from { transform: translateX(-16px); } to { transform: translateX(64px); } }
+      body.ready #loading { opacity: 0; }
+      body:not(.ready) .ui { opacity: 0; }
       .ui { position: fixed; inset: 0; pointer-events: none; color: var(--fg); font: 600 12px/16px var(--mono); letter-spacing: 0; mix-blend-mode: difference; }
       .tl { position: absolute; left: 24px; top: 24px; }
       .bl { position: absolute; left: 24px; bottom: 24px; font-variant-numeric: tabular-nums; }
@@ -30,6 +38,7 @@
   </head>
   <body>
     <div id="screen" aria-label="YOHI の体験。長押しでブラウン管の部屋に電気を溜め、路地の壁にドラッグでスプレーを吹きます"></div>
+    <div id="loading"><div>LOADING<i></i></div></div>
     <div class="ui">
       <div class="tl">YOHI IWAKIRI</div>
       <button id="sound" type="button" aria-pressed="true">SOUND ON</button>

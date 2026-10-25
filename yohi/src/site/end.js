@@ -235,6 +235,8 @@ export async function createEnd(renderer, env, { getShots, getSpray }) {
     scene, camera, hint: '',
     setQuality() {},
     reset() { st.t = 0; st.built = false; },
+    // 前の場面（夜を縫う線）で紙切れに使うため、先にポスターを刷っておく
+    prepare() { compose(); composeBack(); st.built = true; return posterTex; },
     enter() {
       compose(); composeBack();
       st.built = true;

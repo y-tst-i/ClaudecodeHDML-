@@ -164,9 +164,12 @@ export async function createTune(renderer, env, { inner }) {
     const seg = (a, b) => clamp01((e - a) / (b - a));
     // 画面の中身：次の場面（路地）をそのまま描く
     inner.draw({ x: 0, y: 0 });
+    const ic = inner.camera, keep = [ic.fov, ic.aspect];
+    ic.fov = ic.userData.base ?? ic.fov; ic.aspect = 16 / 9; ic.updateProjectionMatrix();   // 画面の中は 16:9
     renderer.setRenderTarget(rt);
-    renderer.render(inner.scene, inner.camera);
+    renderer.render(inner.scene, ic);
     renderer.setRenderTarget(null);
+    [ic.fov, ic.aspect] = keep; ic.updateProjectionMatrix();
     const lock = st.lockAt !== null ? 1 : clamp01(1 - Math.abs(near()) / MAGNET) ** 2;
     screenU.uOff.value = st.off;
     screenU.uT.value = t;
