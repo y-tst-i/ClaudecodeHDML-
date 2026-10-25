@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { createCreature } from './creature.js';
+import { createCreature, loadCreatureModel } from './creature.js';
 
 // キャラの確認用：設定画と同じ薄いグレーの背景で、正面・横・後ろを撮る。
 // ?mode=render のとき __seek(t)：t=0 正面 / 1 横（左向き）/ 2 後ろ / 3 以降は動き（power・衝撃）を確認
@@ -29,6 +29,7 @@ ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 
+if (!new URLSearchParams(location.search).has('v1')) await loadCreatureModel();   // ?v1 でコードで組み立てた版
 const mon = createCreature({ envMap: env });
 scene.add(mon.group);
 const camera = new THREE.PerspectiveCamera(24, 1536 / 1024, 0.1, 50);

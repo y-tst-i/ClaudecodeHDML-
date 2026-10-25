@@ -1,6 +1,11 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
-// 電気のけもの（設定画：yohi/assets/chara/mon_b_spark.png）をコードで組み立てる。
+// 電気のけもの（設定画：yohi/assets/chara/mon_b_spark.png）。
+// v2：Blender で作った骨入りのモデル（yohi/chara/blender/build_creature.py → assets/chara/creature.glb）を、
+//     先に loadCreatureModel() で読み込んでおけば、それを使う。読み込んでいなければ v1（コードで組み立てた形）。
+// v1：コードで組み立てる。
 // 高さ 1.0（耳の先まで）、足元が原点、顔は +z を向く。
 // 動きは update({ t, power, sinceImpact, look }) の値だけで決まる（前のフレームの状態を持たない）。
 
@@ -57,7 +62,178 @@ function taperedTube(curve, radius, t0, t1, seg = 48, rad = 20) {
 const hash = (a, b) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); };
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
-export function createCreature({ envMap = null, glowScale = 1 } = {}) {
+export function createCreature(opts = {}) {
+  return MODEL ? createFromModel(opts) : createCreatureCode(opts);
+}
+
+// ---------- v2：骨入りモデル ----------
+let MODEL = null;
+const MODEL_URL = new URL('../../assets/chara/creature.glb', import.meta.url).href;
+// 埋め込み（data: URL）は fetch を使わずにバイト列にする（公開先の CSP で data: への fetch が止められるため）
+function toArrayBuffer(url) {
+  if (!url.startsWith('data:')) return fetch(url).then((r) => r.arrayBuffer());
+  const bin = atob(url.slice(url.indexOf(',') + 1));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return Promise.resolve(bytes.buffer);
+}
+export async function loadCreatureModel() {
+  if (MODEL) return MODEL;
+  const ab = await toArrayBuffer(MODEL_URL);
+  const gltf = await new GLTFLoader().parseAsync(ab, '');
+  const sc = gltf.scene;
+  sc.updateMatrixWorld(true);
+  // 目の部品は、まばたきで縮められるように中心を原点へ寄せておく（形は全部のけもので共有）
+  sc.traverse((o) => {
+    if (!o.isMesh || !/^(eye|iris|shine)_/.test(o.name)) return;
+    const box = new THREE.Box3().setFromBufferAttribute(o.geometry.attributes.position), c = box.getCenter(new THREE.Vector3());
+    o.geometry.translate(-c.x, -c.y, -c.z);
+    o.position.add(c.applyQuaternion(o.quaternion).multiply(o.scale));
+  });
+  sc.updateMatrixWorld(true);
+  MODEL = sc;
+  return MODEL;
+}
+
+// 体の材質：骨を動かす前の形（bind pose）の位置で、胸のしま・耳の先・しっぽの先を塗る（光る所は色を黒・発光だけ）
+const STRIPE_C = '0.0, 0.27, -0.1', TAIL_TIP = '0.19, 0.78, -0.44';
+function vinylMaterial(envMap, U) {
+  const m = new THREE.MeshPhysicalMaterial({ color: '#2b1d1a', roughness: 0.42, clearcoat: 0.55, clearcoatRoughness: 0.28, envMap, envMapIntensity: 0.5 });
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, U);
+    sh.vertexShader = 'varying vec3 vRest;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRest = position;');
+    sh.fragmentShader = 'varying vec3 vRest;\nuniform float uStripe, uEar, uTail;\n' + sh.fragmentShader
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        // 胸のしま：胴に巻いた横じま（シャツのボーダー）。後ろへ行くほど少し上がる。頭・しっぽには描かない
+        vec3 l = vRest - vec3(${STRIPE_C});
+        float d = dot(l, normalize(vec3(0.0, 0.97, 0.25)));
+        float band = smoothstep(0.022, 0.013, abs(d - 0.105)) + smoothstep(0.022, 0.013, abs(d - 0.04));
+        vec3 hq = abs((vRest - vec3(0.0, 0.64, 0.07)) / vec3(0.35, 0.315, 0.29));
+        float inHead = step(pow(hq.x, 2.3) + pow(hq.y, 2.3) + pow(hq.z, 2.3), 1.0);
+        band *= (1.0 - inHead) * smoothstep(0.17, 0.2, vRest.y) * smoothstep(-0.44, -0.38, vRest.z);
+        float ear = smoothstep(0.985, 1.0, vRest.y) * step(0.08, abs(vRest.x));
+        float tip = smoothstep(0.17, 0.15, distance(vRest, vec3(${TAIL_TIP}))) * step(vRest.z, -0.25);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.0), max(band, ear));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.75, 0.12, 0.03), tip);`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance += vec3(0.78, 1.0, 0.86) * (band * uStripe + ear * uEar) + vec3(1.0, 0.28, 0.1) * tip * uTail;`);
+  };
+  return m;
+}
+
+function createFromModel({ envMap = null, glowScale = 1 } = {}) {
+  const root = new THREE.Group(), rig = new THREE.Group();
+  root.add(rig);
+  const model = cloneSkinned(MODEL);
+  rig.add(model);
+  const U = { uStripe: { value: 1 }, uEar: { value: 1 }, uTail: { value: 0.35 } };
+  const vinyl = vinylMaterial(envMap, U);
+  const sclera = new THREE.MeshStandardMaterial({ color: '#000000', emissive: MINT, emissiveIntensity: 0.9, roughness: 0.2 });
+  const cheek = new THREE.MeshStandardMaterial({ color: '#000000', emissive: MINT, emissiveIntensity: 0.9, roughness: 0.3 });
+  const iris = new THREE.MeshBasicMaterial({ color: '#050303' });
+  const shine = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+  const byName = { vinyl, glow_eye: sclera, glow_cheek: cheek, iris, shine };
+  const eyes = [];
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    o.material = byName[o.material.name] ?? vinyl;
+    o.frustumCulled = false;   // 骨で動くので、元の形の範囲で切られないように
+    if (/^(eye|iris|shine)_/.test(o.name)) eyes.push(o);
+  });
+  model.updateMatrixWorld(true);
+  // 骨：休みの姿勢を覚えておき、「世界の上向き・横向き」を各骨の向きに直しておく（そのまわりに回す）
+  const W = { up: new THREE.Vector3(0, 1, 0), side: new THREE.Vector3(1, 0, 0), fwd: new THREE.Vector3(0, 0, 1) };
+  const bones = {};
+  model.traverse((o) => {
+    if (!o.isBone) return;
+    const inv = o.getWorldQuaternion(new THREE.Quaternion()).invert();
+    bones[o.name] = { o, rest: o.quaternion.clone(), ax: Object.fromEntries(Object.entries(W).map(([k, v]) => [k, v.clone().applyQuaternion(inv)])) };
+  });
+  // まばたき：目の部品ごとに、世界の上向きがどの軸かを調べる
+  for (const e of eyes) {
+    const up = W.up.clone().applyQuaternion(e.getWorldQuaternion(new THREE.Quaternion()).invert());
+    const a = [Math.abs(up.x), Math.abs(up.y), Math.abs(up.z)];
+    e.userData.blinkAxis = ['x', 'y', 'z'][a.indexOf(Math.max(...a))];
+    const fw = W.fwd.clone().applyQuaternion(e.getWorldQuaternion(new THREE.Quaternion()).invert());
+    const b = [Math.abs(fw.x), Math.abs(fw.y), Math.abs(fw.z)];
+    e.userData.depthAxis = ['x', 'y', 'z'][b.indexOf(Math.max(...b))];   // 奥行きの軸（ここは伸ばさない。頭の丸みに沿った形が沈むので）
+    e.userData.rest = e.scale.clone();
+  }
+  // しっぽの先の火花（しっぽの最後の骨にくっつける）
+  const glow = new THREE.MeshStandardMaterial({ color: '#000000', emissive: MINT, emissiveIntensity: 1.0 });
+  const sparks = [];
+  if (bones.tail_3) {
+    const tipLocal = bones.tail_3.o.worldToLocal(new THREE.Vector3(0.21, 0.83, -0.46));
+    const tipWorld = new THREE.Vector3(0.21, 0.83, -0.46);
+    for (let k = 0; k < 5; k++) {
+      const a = -0.6 + k * 0.45;
+      const s = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.035, 0.008), glow);
+      const wpos = tipWorld.clone().add(new THREE.Vector3(Math.sin(a) * 0.1, Math.cos(a) * 0.1, 0));
+      s.position.copy(bones.tail_3.o.worldToLocal(wpos));
+      s.quaternion.copy(bones.tail_3.o.getWorldQuaternion(new THREE.Quaternion()).invert()).multiply(new THREE.Quaternion().setFromAxisAngle(W.fwd, -a));
+      bones.tail_3.o.add(s);
+      sparks.push(s);
+    }
+    void tipLocal;
+  }
+  const q = new THREE.Quaternion();
+  const turn = (name, ...rots) => {
+    const b = bones[name];
+    if (!b) return;
+    b.o.quaternion.copy(b.rest);
+    for (const [axis, ang] of rots) if (ang) b.o.quaternion.multiply(q.setFromAxisAngle(b.ax[axis], ang));
+  };
+
+  function update({ t = 0, power = 0, sinceImpact = -1, look = { x: 0, y: 0 }, chomp = 0, fat = 0, sneeze = 0 } = {}) {
+    const impacted = sinceImpact >= 0;
+    let jump = 0, squash = 0;
+    if (impacted) {
+      const s = sinceImpact;
+      if (s < 0.08) squash = s / 0.08 * 0.18;
+      else if (s < 0.63) { const k = (s - 0.08) / 0.55; jump = 0.42 * 4 * k * (1 - k); squash = -0.1 * Math.sin(k * Math.PI); }
+      else squash = 0.16 * Math.exp(-(s - 0.63) * 9) * Math.cos((s - 0.63) * 22);
+    } else squash = power * 0.06 * (0.6 + 0.4 * Math.sin(t * 30));
+    const breath = Math.sin(t * 2.4) * 0.012;
+    root.position.y = jump;
+    const puff = 1 + fat * 0.22;
+    rig.scale.set((1 + squash * 0.5) * puff, (1 - squash + breath) * (1 + fat * 0.06), (1 + squash * 0.5) * puff);
+    // 頭：見る方へ向く・うつむいて噛む・くしゃみの前にのけぞる・ゆっくり首をかしげる
+    turn('head', ['up', look.x * 0.45 + Math.sin(t * 0.7) * 0.05], ['side', -look.y * 0.18 + Math.sin(t * 0.9) * 0.02 + chomp * (0.32 + 0.16 * Math.max(0, Math.sin(t * 16))) - sneeze * 0.55], ['fwd', Math.sin(t * 0.5) * 0.06]);
+    turn('body', ['side', -chomp * 0.08 + sneeze * 0.1]);
+    // 耳：ときどきピクッ。溜めると後ろへ倒れる
+    const tw = hash(Math.floor(t / 2.9), 5) > 0.5 && (t % 2.9) < 0.25 ? Math.max(0, Math.sin(((t % 2.9) / 0.25) * Math.PI)) : 0;
+    turn('ear_L', ['side', -power * 0.45 + tw * 0.25], ['fwd', tw * 0.12]);
+    turn('ear_R', ['side', -power * 0.45 + tw * 0.25], ['fwd', -tw * 0.12]);
+    // しっぽ：ゆっくり揺れる。溜めると震え、衝撃のあとは大きく振る（根元から先へ遅れて伝わる）
+    const wagAt = (d) => (impacted ? Math.sin(t * 9 - d) * 0.45 * (0.5 + 0.5 * Math.exp(-sinceImpact * 0.6)) : Math.sin(t * 1.8 - d) * 0.22 + power * Math.sin(t * 40 - d) * 0.06);
+    turn('tail_1', ['up', wagAt(0) * 0.6], ['side', 0.05 * Math.sin(t * 1.3)]);
+    turn('tail_2', ['up', wagAt(0.6) * 0.45]);
+    turn('tail_3', ['up', wagAt(1.2) * 0.35]);
+    // まばたき（3.7秒ごと）。衝撃の直後は目を見開く
+    const bk = (t / 3.7 + 0.31) % 1;
+    const blink = bk < 0.05 ? Math.sin(bk / 0.05 * Math.PI) : 0;
+    const wide = impacted ? Math.exp(-sinceImpact * 1.5) * 0.15 : 0;
+    for (const e of eyes) {
+      e.scale.copy(e.userData.rest).multiplyScalar(1 + wide);
+      e.scale[e.userData.depthAxis] = e.userData.rest[e.userData.depthAxis];
+      e.scale[e.userData.blinkAxis] *= Math.max(0.08, 1 - blink * 0.95);
+    }
+    // 光：溜まるほど強く、ちらつく。衝撃で最大
+    const flick = 0.85 + 0.15 * hash(Math.floor(t * 20), 3);
+    const charge = impacted ? 0.4 + Math.exp(-sinceImpact * 3) * 3 : power * 2.2;
+    U.uStripe.value = (0.9 + charge) * (power > 0.05 && !impacted ? flick : 1) * glowScale;
+    U.uEar.value = (1.0 + charge * 0.8) * glowScale;
+    U.uTail.value = (0.35 + charge * 0.5) * glowScale;
+    cheek.emissiveIntensity = (0.9 + charge * 0.3) * glowScale;
+    sclera.emissiveIntensity = (0.8 + charge * 0.15) * glowScale;
+    glow.emissiveIntensity = 1.0 * glowScale;
+    sparks.forEach((s, k) => { s.visible = hash(Math.floor(t * 15), k) < 0.35 + (impacted ? 0.5 : power * 0.6); });
+  }
+  update();
+  return { group: root, update };
+}
+
+function createCreatureCode({ envMap = null, glowScale = 1 } = {}) {
   // glowScale：暗い部屋（ブルームあり）では光る部分を弱めにしないと、にじみで体が白く霞む
   // ---------- 材質：つるっとしたソフビ ----------
   const vinyl = new THREE.MeshPhysicalMaterial({ color: '#2b1d1a', roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.16, envMap, envMapIntensity: 0.6 });

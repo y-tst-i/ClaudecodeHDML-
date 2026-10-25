@@ -8,6 +8,7 @@ import { createShop } from './shop.js';
 import { createEnd } from './end.js';
 import { createTune } from './tune.js';
 import { createWire } from './wire.js';
+import { loadCreatureModel } from '../chara/creature.js';
 import { prepareAudio, resumeAudio, sfx, setMuted, setDuck, audioState } from '../audio.js';
 
 // YOHI の体験型サイト（複数の場面）。場面1：ブラウン管の部屋 → 場面2：夜の路地 → 部屋へ戻る。
@@ -24,6 +25,7 @@ $('screen').appendChild(renderer.domElement);
 const env = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 
 // エンディング用：各場面の見せ場の1コマ（ポスターに刷る）
+if (!params.has('v1')) await loadCreatureModel();   // けもの v2（Blender で作った骨入りモデル）。?v1 でコードで組み立てた版
 const room = await createRoom(renderer, env), alley = await createAlley(renderer, env), shop = await createShop(renderer, env);
 const tune = await createTune(renderer, env, { inner: alley });
 const shotScenes = [room, alley, shop];   // ポスターに刷る場面
